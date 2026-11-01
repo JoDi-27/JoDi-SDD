@@ -12,7 +12,7 @@ updated: {{DATE}}
 # {{ID}} · {{TITLE}}
 
 <!--
-A spike answers questions and settles decisions; it does not ship production code. Run it with /sdd:spike {{ID}}:
+A spike answers questions and settles decisions; it does not ship production code. Run it with /jsdd:spike {{ID}}:
 the spike-researcher agent prepares a briefing and questions, you answer and add information over as many sessions
 as it takes, and everything learned is recorded here. Prototypes are throwaway and live under specs/{{ID}}-*/prototype/.
 Progress counts the checkboxes in Goal questions, Questions for you, and Deliverables.
@@ -20,7 +20,7 @@ Progress counts the checkboxes in Goal questions, Questions for you, and Deliver
 
 ## Inbox
 
-<!-- Drop notes, links, constraints, or decisions here at any time, in any form. The next /sdd:spike session moves them into the Log and Findings and clears this section. -->
+<!-- Drop notes, links, constraints, or decisions here at any time, in any form. The next /jsdd:spike session moves them into the Log and Findings and clears this section. -->
 
 ## Why
 
