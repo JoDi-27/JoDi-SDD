@@ -29,7 +29,7 @@ Delete these comments once the section is filled in.
 
 ## Decisions
 
-<!-- Every choice between real alternatives. Cross-cutting ones also update BACKLOG.md. -->
+<!-- Every choice between real alternatives. Cross-cutting ones, or ones that settle an ND, get a DEC row in docs/decisions.md and tick the BACKLOG.md item. -->
 
 | # | Decision | Alternatives | Why |
 | --- | --- | --- | --- |

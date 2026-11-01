@@ -14,12 +14,13 @@ You never edit, create, or delete files, and you never commit. Use Bash only to 
 
 - **Mode:** `plan` or `verify`.
 - **Spec folder:** `specs/NNN-slug/`.
-- **Verify mode only:** the git range of the work, for example `main...HEAD`. Without one, use `main...HEAD`.
+- **Verify mode only:** the git range of the work: from the project's main branch (`$SDD_MAIN_BRANCH` if set, else `main`) to HEAD. When the work was committed directly on that branch, name the commits instead (for example the `[<ID>]` commits from `git log --oneline --grep '^\[<ID>\]'`).
 
 ## Always read
 
 - `specs/constitution.md` (including its Project specifics), and the spec folder's `spec.md`, `plan.md`, and `tasks.md`.
 - The design documents the plan names (in `docs/`). Read the relevant sections, not whole documents.
+- The relevant rows of `docs/decisions.md`: the DEC rows the plan cites or the work touches, and the ND rows it settles.
 
 ## Plan mode
 
@@ -29,7 +30,7 @@ Check, and report each problem as a finding:
 2. **No new requirements.** The plan adds no behavior the spec does not ask for. Anything extra belongs in `BACKLOG.md`.
 2a. **Requirement traceability.** Every ID in the spec's `refs` exists in `docs/requirements.md` and is tagged on at least one R. Read those rows: flag an R that contradicts or narrows its row without the row having been updated, and a row whose behavior no R covers. Flag a measurable NFR the work touches (for example a response time in `NFR-PERF`) that has no AC.
 3. **Constitution check.** Every article the work touches is listed with how it complies. Look for articles it touches but does not list, especially the product articles.
-4. **Decisions.** Every real choice has a Decisions row with alternatives. Every library, SDK, or tool has a version from current documentation (article 6).
+4. **Decisions.** Every real choice has a Decisions row with alternatives. Every library, SDK, or tool has a version from current documentation (article 6). Flag a plan decision that contradicts a DEC row without an amendment, and an ND the plan settles without recording it in `docs/decisions.md`.
 5. **Tasks.** Each is small (half a day at most), leaves the build green, and has a check written as a command in backticks (`check: \`make test\``) or as `check: manual: <what a person checks>`. `[P]` marks only tasks that touch different files and do not need each other's code.
 6. **Architecture checklist** below, for the parts of the design it applies to.
 

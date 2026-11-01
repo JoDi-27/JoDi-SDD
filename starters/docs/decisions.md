@@ -1,6 +1,6 @@
 # Decisions
 
-Settled choices get a `DEC-nn` row; open ones keep their `ND-nn` ID until a spike or spec settles them, then move to Decided with the same reasoning. Plans cite the `DEC-nn` they rely on.
+The register of decisions. Settled choices get a `DEC-nn` row; open ones keep their `ND-nn` row under "Still open", with a one-line item in [BACKLOG.md](../BACKLOG.md). A spike's Recommendation, or a plan's cross-cutting Decisions row, settles an ND into a DEC here with the same reasoning, and the BACKLOG item is ticked in the same change. Plans cite the `DEC-nn` they rely on.
 
 ## Decided
 

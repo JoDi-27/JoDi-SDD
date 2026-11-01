@@ -21,9 +21,9 @@ You write the WHAT and WHY of one slice of work. You do not plan or implement.
 
 - If the input is a spec ID (for example `003`), claim it (`sdd claim 003`), open `specs/003-*/spec.md`, and go to step 4. If another session holds it, stop and report who.
 - Otherwise pick the type: `spike` if the work answers questions or settles decisions (all PLAN.md Phase 0 spikes), `feature` if it delivers working behavior.
-- Spikes are run as an interview by `/sdd:spike`, not by this skill. For a spike (new, or an existing spike ID), stop here and follow the `/sdd:spike` skill instead.
+- Spikes are created and run as an interview by `/sdd:spike`, not by this skill. For a spike (new, or an existing spike ID), stop here and follow the `/sdd:spike` skill instead.
 - If the work is clearly larger than a few days, propose a split into several specs and confirm it with the user before creating them.
-- Create it: `sdd new <feature|spike> "<title>"`, then claim the new ID with `sdd claim <ID>`. Keep titles short and use the PLAN.md wording when the work comes from there.
+- Create it: `sdd new feature "<title>"`, then claim the new ID with `sdd claim <ID>`. Keep titles short and use the PLAN.md wording when the work comes from there.
 
 ## 3. Write the spec
 

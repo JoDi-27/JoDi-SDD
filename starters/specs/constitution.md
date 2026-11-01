@@ -15,7 +15,7 @@ Example: - **P1 Tenants are isolated.** Every record belongs to one tenant, and 
 2. **Tests prove acceptance criteria.** Every acceptance criterion maps to an automated test or a recorded manual check. A task is done only when its check passes.
 3. **Small, traceable increments.** One spec is one reviewable slice (a few days at most; split it otherwise). One task is about one commit, and commit messages start with the spec and task ID, for example `[003] T2 Add invite table`.
 4. **Specs are living.** When implementation shows the spec or plan is wrong, update them first, then the code. Code never silently diverges from its spec.
-5. **Decisions are written down.** Every choice between real alternatives gets a row in the plan's Decisions table (or a spike's Recommendation). Choices that settle a backlog item or an open decision in `docs/decisions.md` also update it in place.
+5. **Decisions are written down.** Every choice between real alternatives gets a row in the plan's Decisions table (or a spike's Recommendation). A choice that settles an open decision moves its row in `docs/decisions.md` from Still open to Decided, and ticks the backlog item.
 6. **Verify current docs.** Before using a library, SDK, or tool API, check its current documentation rather than relying on memory, and note the version in the plan.
 
 ## Project specifics
