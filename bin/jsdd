@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # jsdd: helper for the spec-driven development kit. See specs/README.md.
-# Plain bash 3.2 + awk, so it runs on a stock macOS or Linux laptop.
+# Plain bash 3.2 + awk, so it runs on a stock macOS or Linux laptop, or in Git
+# Bash on Windows. Project files may have CRLF line endings (core.autocrlf), so
+# the awk scripts that read them drop the CR first.
 set -euo pipefail
 
 # The plugin this script ships in, and the project it works on: $SDD_ROOT, else
@@ -18,7 +20,7 @@ if CLAIMS=$(cd "$ROOT" && git rev-parse --git-common-dir 2>/dev/null); then
 else
   CLAIMS="$SPECS_DIR/.claims"
 fi
-ME="${CLAUDE_CODE_SESSION_ID:-${USER:-unknown}@$(hostname -s)}"
+ME="${CLAUDE_CODE_SESSION_ID:-${USER:-${USERNAME:-unknown}}@$(hostname -s 2>/dev/null || hostname)}"
 STALE_HOURS="${SDD_STALE_HOURS:-8}"
 
 usage() {
@@ -106,6 +108,7 @@ spec_dir() {
 # A double-quoted value has its \" and \\ escapes undone (see "new").
 fm() {
   awk -v k="$2" '
+    { sub(/\r$/, "") }
     NR == 1 { if ($0 != "---") exit; next }
     $0 == "---" { exit }
     {
@@ -130,7 +133,7 @@ fm() {
 # uncomment <files...>: the lines with HTML comments removed.
 uncomment() {
   awk '
-    { line = $0 }
+    { sub(/\r$/, ""); line = $0 }
     incomment { if (index(line, "-->")) { line = substr(line, index(line, "-->") + 3); incomment = 0 } else next }
     {
       while (index(line, "<!--")) {
@@ -455,6 +458,7 @@ cmd_release() {
 # HTML comments, or nothing.
 task_line() {
   awk -v t="$2" '
+    { sub(/\r$/, "") }
     incomment { if (index($0, "-->")) incomment = 0; next }
     {
       line = $0
@@ -482,7 +486,7 @@ check_of() {
 # repository root and ticks the task only when the check exits 0.
 cmd_done() {
   [ $# -ge 2 ] || { usage >&2; exit 1; }
-  local id dir f t row tab n line cmd note="" rc tmp
+  local id dir f t row tab n line cmd note="" rc tmp crlf
   id=$(norm_id "$1"); t=$(norm_task "$2"); shift 2
   if [ "${1:-}" = --manual ]; then
     note="${2:-}"
@@ -513,14 +517,17 @@ cmd_done() {
     exit 1
   fi
 
-  # Tick only that line; a manual check keeps its note on the task.
+  # Tick only that line; a manual check keeps its note on the task. A CRLF file
+  # stays CRLF. tr counts the CRs: awk in Git Bash drops them as it reads.
   tmp="$f.tmp.$$"
-  NOTE="$note" DATE="$(date +%F)" awk -v n="$n" '
+  crlf=0; [ "$(tr -cd '\r' <"$f" | wc -c)" -gt 0 ] && crlf=1
+  NOTE="$note" DATE="$(date +%F)" awk -v n="$n" -v crlf="$crlf" '
+    { sub(/\r$/, "") }
     NR == n {
       sub(/- \[ \]/, "- [x]")
       if (ENVIRON["NOTE"] != "") $0 = $0 " · checked: " ENVIRON["NOTE"] " (" ENVIRON["DATE"] ")"
     }
-    { print }' "$f" > "$tmp" && mv "$tmp" "$f"
+    { printf "%s%s\n", $0, (crlf ? "\r" : "") }' "$f" > "$tmp" && mv "$tmp" "$f"
   touch "$CLAIMS/$id-$t/done"
   if [ -n "$cmd" ]; then echo "check passed; ticked $id $t"; else echo "ticked $id $t (manual check recorded)"; fi
 }
@@ -608,6 +615,7 @@ spec_refs() {
 phase_scope() {
   [ -f "$PLAN_FILE" ] || { echo "no PLAN.md for --phase" >&2; exit 1; }
   awk -v p="$1" '
+    { sub(/\r$/, "") }
     /^## / { on = (index($0, "## Phase " p ":") == 1 || $0 == "## Phase " p) ; next }
     on' "$PLAN_FILE" | grep -oE "$REQ_ID_RE" | sort -u | tr '\n' ' '
 }
@@ -625,6 +633,7 @@ coverage_rows() {
       }
       next
     }
+    { sub(/\r$/, "") }
     /^\| *N?FR-[A-Z0-9]+-[0-9]+[a-z]? *\|/ {
       nf = split($0, c, "|")
       id = c[2]; gsub(/^ +| +$/, "", id)
@@ -754,7 +763,7 @@ cmd_init() {
   fi
 
   # Settings: drop the old kit's hooks and permission, allow jsdd without a prompt.
-  json='{}'; [ -f "$settings" ] && json=$(jq . "$settings")
+  json='{}'; [ -f "$settings" ] && json=$(jq . "$settings" | tr -d '\r')
   new=$(printf '%s' "$json" | jq --arg re "$OLD_HOOKS" --arg allow "$ALLOW" '
     if .hooks then
       .hooks |= (with_entries(.value |= (map(.hooks |= map(select((.command // "") | test($re) | not)))
@@ -763,7 +772,7 @@ cmd_init() {
       | if .hooks == {} then del(.hooks) else . end
     else . end
     | .permissions.allow |= ((. // []) | map(select(. != "Bash(specs/_kit/sdd *)" and . != "Bash(sdd *)"))
-                             | if any(.[]; . == $allow) then . else . + [$allow] end)')
+                             | if any(.[]; . == $allow) then . else . + [$allow] end)' | tr -d '\r')
   if [ "$new" != "$json" ]; then
     echo "Settings:"
     echo "  update   .claude/settings.json (allow $ALLOW${old:+; remove the old hooks})"
@@ -771,7 +780,7 @@ cmd_init() {
     [ -n "$dry" ] || printf '%s\n' "$new" > "$settings"
   fi
 
-  if ! grep -qxF .claude/settings.local.json "$ROOT/.gitignore" 2>/dev/null; then
+  if ! { tr -d '\r' <"$ROOT/.gitignore"; } 2>/dev/null | grep -qxF .claude/settings.local.json; then
     echo "  ignore   .claude/settings.local.json (.gitignore)"
     [ -n "$dry" ] || printf '%s\n' .claude/settings.local.json >> "$ROOT/.gitignore"
   fi

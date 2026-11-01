@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # Stop: warn (never block) when this session still holds jsdd claims.
-input=$(cat)
-sid=$(printf '%s' "$input" | jq -r '.session_id // empty')
+. "$(dirname "$0")/_lib.sh"   # reads the hook input
+sid=$(json '.session_id // empty')
 [ -n "$sid" ] || exit 0
-cwd=$(printf '%s' "$input" | jq -r '.cwd // empty')
-root=$(git -C "${cwd:-.}" rev-parse --show-toplevel 2>/dev/null) || root="${CLAUDE_PROJECT_DIR:-${cwd:-.}}"
+cwd=$(json '.cwd // empty')
+root=$(git -C "${cwd:-.}" rev-parse --show-toplevel 2>/dev/null) || root=$(posix_path "${CLAUDE_PROJECT_DIR:-${cwd:-.}}")
 cd "$root" || exit 0
 [ -f specs/constitution.md ] || exit 0   # not set up with jsdd init
 # Where bin/sdd keeps claims: the git common dir, else specs/.claims.

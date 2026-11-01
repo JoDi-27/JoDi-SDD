@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # PreToolUse on Bash: block `git commit` whose message does not start with `[NNN]`, `[NNN] Tn`, or `[meta]`.
 # Exit 2 blocks the call and sends stderr to Claude.
-input=$(cat)
-cmd=$(printf '%s' "$input" | jq -r '.tool_input.command // empty')
+. "$(dirname "$0")/_lib.sh"   # reads the hook input
+cmd=$(json '.tool_input.command // empty')
 # git, its global options (flags, or -c/-C/--git-dir/... with a separate,
 # possibly quoted, argument), then commit.
 arg='("[^"]*"|'"'"'[^'"'"']*'"'"'|[^[:space:]]+)'
@@ -10,7 +10,7 @@ opt="(-[^[:space:]]+|(-c|-C|--git-dir|--work-tree|--namespace|--config-env)[[:sp
 printf '%s' "$cmd" | grep -Eq "(^|[;&|(])[[:space:]]*git[[:space:]]+($opt)*commit([[:space:]]|\$)" || exit 0
 
 # Only in projects set up with jsdd init.
-cwd=$(printf '%s' "$input" | jq -r '.cwd // empty')
+cwd=$(json '.cwd // empty')
 root=$(git -C "${cwd:-.}" rev-parse --show-toplevel 2>/dev/null) || root="${CLAUDE_PROJECT_DIR:-.}"
 [ -f "$root/specs/constitution.md" ] || exit 0
 
@@ -18,7 +18,9 @@ root=$(git -C "${cwd:-.}" rev-parse --show-toplevel 2>/dev/null) || root="${CLAU
 if printf '%s' "$cmd" | grep -Eq -- '--no-edit'; then exit 0; fi
 
 # First line of the message: a heredoc body, else -m / -am / --message.
-msg=$(printf '%s' "$cmd" | python3 -c '
+# Without Python the check is skipped (session-start says so).
+python=$(find_python) || exit 0
+msg=$(printf '%s' "$cmd" | PYTHONUTF8=1 "$python" -c '
 import re, shlex, sys
 cmd = sys.stdin.read()
 m = re.search(r"<<-?\s*[\x27\"]?(\w+)[\x27\"]?\n(.*?)\n\s*\1", cmd, re.S)
@@ -39,7 +41,7 @@ for i, a in enumerate(t):
     if (a == "--message" or re.fullmatch(r"-[a-zA-Z]*m", a)) and i + 1 < len(t):
         print(t[i + 1].splitlines()[0] if t[i + 1] else "")
         break
-')
+' | tr -d '\r')
 
 # No message found (editor, -F, -C): let git handle it.
 [ -n "$msg" ] || exit 0
