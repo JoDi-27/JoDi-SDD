@@ -169,6 +169,7 @@ records() {
     progress="$spec"; [ -f "$d/tasks.md" ] && progress="$d/tasks.md"
     done=$(count '^[[:space:]]*- \[[xX]\]' "$progress")
     total=$(count '^[[:space:]]*- \[[ xX]\]' "$progress")
+    # shellcheck disable=SC2046  # the plan path is an optional extra argument, empty when there is no plan
     open=$(count '\[NEEDS CLARIFICATION' "$spec" $( [ -f "$d/plan.md" ] && echo "$d/plan.md" ))
     deps=$(printf '%s' "$deps" | tr -d '[] ' )
     num=$(basename "$d" | cut -c1-3); sclaim=-; tnote=-

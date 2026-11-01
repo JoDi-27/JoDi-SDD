@@ -1,3 +1,4 @@
+# shellcheck shell=bash
 # Shared by the hooks (sourced, not registered in hooks.json).
 # On Windows (Git Bash), jq.exe and python print CRLF line endings, paths in
 # the hook input use backslashes, and python3 may be missing or the Store stub,

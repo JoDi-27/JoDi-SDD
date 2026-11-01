@@ -1,6 +1,9 @@
 {
   "name": "jodi-sdd",
-  "owner": { "name": "JoDi27" },
+  "description": "Spec-driven development for Claude Code: the jsdd plugin.",
+  "owner": {
+    "name": "JoDi27"
+  },
   "plugins": [
     {
       "name": "jsdd",

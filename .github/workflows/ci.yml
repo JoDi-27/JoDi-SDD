@@ -1,6 +1,6 @@
-# Smoke test of bin/jsdd and the hooks on every OS the plugin supports. On
-# Windows it runs in Git Bash, as Claude Code does, with core.autocrlf on as
-# Git for Windows sets it by default.
+# Checks every pull request and push to main: the plugin manifests, shellcheck
+# on the scripts, and a smoke test of jsdd and the hooks on Linux, on macOS,
+# whose stock bash is 3.2, and on Windows in Git Bash, as Claude Code runs them.
 name: CI
 
 on:
@@ -12,6 +12,21 @@ permissions:
   contents: read
 
 jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Manifests are valid JSON
+        run: |
+          for f in .claude-plugin/*.json hooks/hooks.json; do jq empty "$f"; done
+
+      - name: Validate the plugin
+        run: npx --yes @anthropic-ai/claude-code@2.1.314 plugin validate .
+
+      - name: Shellcheck
+        run: shellcheck -S warning bin/jsdd hooks/*.sh .github/scripts/*.sh
+
   smoke:
     strategy:
       fail-fast: false
@@ -22,6 +37,7 @@ jobs:
       run:
         shell: bash
     steps:
+      # Git for Windows turns this on by default; .gitattributes must keep the scripts LF.
       - name: Use core.autocrlf like Git for Windows
         if: runner.os == 'Windows'
         run: git config --global core.autocrlf true
@@ -30,7 +46,7 @@ jobs:
 
       - name: Scripts are checked out with LF
         run: |
-          if grep -lU $'\r' bin/jsdd hooks/*.sh hooks/hooks.json tests/*.sh; then
+          if grep -lU $'\r' bin/jsdd hooks/*.sh hooks/hooks.json .github/scripts/*.sh; then
             echo "CRLF in the files above: check .gitattributes" >&2; exit 1
           fi
 
@@ -38,12 +54,9 @@ jobs:
         run: |
           command -v jq >/dev/null || { [ "$RUNNER_OS" = Windows ] && choco install -y jq; }
           jq --version
-          bash --version | head -1
           python3 --version || python --version
 
       - name: Smoke test
-        run: bash tests/smoke.sh
-
-      - name: Smoke test with bash 3.2 (stock macOS)
-        if: runner.os == 'macOS'
-        run: PATH="/bin:$PATH" /bin/bash tests/smoke.sh
+        # /bin/bash is 3.2 on macOS, the oldest bash jsdd supports; Git Bash on Windows.
+        run: |
+          if [ "$RUNNER_OS" = Windows ]; then bash .github/scripts/smoke.sh; else /bin/bash .github/scripts/smoke.sh; fi

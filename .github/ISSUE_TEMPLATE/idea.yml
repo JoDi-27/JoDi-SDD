@@ -1,0 +1,16 @@
+name: Idea
+description: A new flow, a change to the workflow, or something that would make jsdd easier to use.
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem
+      description: What you were trying to do, and where the current workflow got in the way.
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: What you'd like
+      description: How you'd want it to work. A rough sketch is fine.

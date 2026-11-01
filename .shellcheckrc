@@ -1,0 +1,2 @@
+# SC1010: jsdd uses `done` as a variable name (`done=...`, `state=done`), which is valid bash.
+disable=SC1010

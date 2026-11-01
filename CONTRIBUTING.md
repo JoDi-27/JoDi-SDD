@@ -10,7 +10,7 @@ You don't need to install the plugin to test it. Run Claude Code in a test proje
 claude --plugin-dir path/to/jodi-sdd
 ```
 
-Check the manifests with `claude plugin validate .`.
+Check the manifests with `claude plugin validate .`, and run `/bin/bash .github/scripts/smoke.sh` for an end-to-end test of `jsdd` and the hooks in a throwaway repository. [CI](.github/workflows/ci.yml) runs both on every pull request, plus `shellcheck -S warning` on the scripts; the smoke test runs on Linux, on macOS's bash 3.2, and on Windows in Git Bash.
 
 ## Releasing
 
@@ -44,5 +44,4 @@ Every PR merged into `main` is released by [the Release workflow](.github/workfl
 
 - `bin/jsdd` stays portable: bash 3.2 (stock macOS) and POSIX awk, no GNU-only flags.
 - Windows runs everything in Git Bash. Project files may be CRLF, so awk that reads them starts with `{ sub(/\r$/, "") }`. Hooks read their input with `json` from `hooks/_lib.sh` (jq.exe prints CRLF, and paths arrive with backslashes) and find Python with `find_python`.
-- `tests/smoke.sh` runs the CLI and hooks end to end; CI runs it on Linux, macOS, and Windows. Run it with `bash tests/smoke.sh`.
 - Commit messages in this repository start with `[meta]`.
