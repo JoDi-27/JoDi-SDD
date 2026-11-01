@@ -37,6 +37,7 @@ Everything is plain Markdown in your repository, driven by one bash script. Ther
 
 - Claude Code with plugin support
 - `bash`, `awk`, `jq`, and `python3` (already installed on most macOS and Linux machines)
+- On Windows: [Git for Windows](https://gitforwindows.org) (Claude Code runs the hooks and `jsdd` in its Git Bash), plus jq and Python: `winget install jqlang.jq Python.Python.3.12`. Without them, the commit-message check and `STATUS.md` regeneration are skipped, and the session-start board says so.
 - A git repository is recommended. Sharing claims across worktrees and checking commit messages both need one.
 
 ## Install

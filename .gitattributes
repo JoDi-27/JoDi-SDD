@@ -1,0 +1,4 @@
+# Keep LF everywhere, also in Windows checkouts with core.autocrlf: bash fails on
+# CRLF scripts, and the hooks and bin/jsdd are bash.
+* text=auto eol=lf
+*.svg text eol=lf

@@ -43,4 +43,6 @@ Every PR merged into `main` is released by [the Release workflow](.github/workfl
 ## Conventions
 
 - `bin/jsdd` stays portable: bash 3.2 (stock macOS) and POSIX awk, no GNU-only flags.
+- Windows runs everything in Git Bash. Project files may be CRLF, so awk that reads them starts with `{ sub(/\r$/, "") }`. Hooks read their input with `json` from `hooks/_lib.sh` (jq.exe prints CRLF, and paths arrive with backslashes) and find Python with `find_python`.
+- `tests/smoke.sh` runs the CLI and hooks end to end; CI runs it on Linux, macOS, and Windows. Run it with `bash tests/smoke.sh`.
 - Commit messages in this repository start with `[meta]`.

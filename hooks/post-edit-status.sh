@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # PostToolUse on Edit|Write: regenerate specs/STATUS.md when a spec.md, tasks.md, or the root PLAN.md or docs/requirements.md changed.
 input=$(cat)
-file=$(printf '%s' "$input" | jq -r '.tool_input.file_path // empty')
+. "$(dirname "$0")/_lib.sh"
+file=$(posix_path "$(json '.tool_input.file_path // empty')")
 rootdoc=""
 case "$file" in
   */specs/[0-9][0-9][0-9]-*/spec.md|*/specs/[0-9][0-9][0-9]-*/tasks.md) ;;
@@ -18,7 +19,7 @@ if root=$(git -C "$dir" rev-parse --show-toplevel 2>/dev/null); then
     case "$rel" in PLAN.md|docs/requirements.md) ;; *) exit 0 ;; esac
   fi
 else
-  root="${CLAUDE_PROJECT_DIR:-}"
+  root=$(posix_path "${CLAUDE_PROJECT_DIR:-}")
   [ -n "$root" ] || exit 0
   if [ -n "$rootdoc" ]; then
     case "$file" in "$root/PLAN.md"|"$root/docs/requirements.md") ;; *) exit 0 ;; esac

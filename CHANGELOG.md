@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Windows support (Git Bash): the hooks run through `bash`, handle backslash paths and jq/Python CRLF output, find `python` when there is no `python3`, and `jsdd` reads CRLF project files. The session-start board warns when jq or Python is missing.
+- CI runs a smoke test of the CLI and hooks on Linux, macOS, and Windows.
+
 ## 0.3.0 (2026-11-01)
 
 - `docs/decisions.md` is the single register of decisions. Open ones (`ND-nn`) become `DEC-nn` rows when a spike or plan settles them; the backlog keeps a one-line item. Spike, plan, verify, and both agents read and write it.
