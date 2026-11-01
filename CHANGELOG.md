@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.4.1 (2026-11-01)
+
 - Windows support (Git Bash): the hooks run through `bash`, handle backslash paths and jq/Python CRLF output, find `python` when there is no `python3`, and `jsdd` reads CRLF project files. The session-start board warns when jq or Python is missing.
 - CI also runs the smoke test on Windows.
 
