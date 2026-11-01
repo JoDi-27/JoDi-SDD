@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.4.0 (2026-11-01)
+
 First public release.
 
 - The plugin has an icon.
