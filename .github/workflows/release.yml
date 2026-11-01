@@ -1,0 +1,51 @@
+# Release on every merged PR into main: bump the plugin version (patch, or the
+# PR's release:minor / release:major label), move CHANGELOG.md's Unreleased notes
+# under it, then commit, tag, and publish a GitHub release. release:skip opts out.
+name: Release
+
+on:
+  # _target so merged PRs from forks get a write token too. It checks out main,
+  # never the PR's code, and reads the PR title only through env.
+  pull_request_target:
+    types: [closed]
+    branches: [main]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    if: github.event.pull_request.merged && !contains(github.event.pull_request.labels.*.name, 'release:skip')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Bump version and changelog
+        id: bump
+        env:
+          LABELS: ${{ toJSON(github.event.pull_request.labels.*.name) }}
+          TITLE: ${{ github.event.pull_request.title }}
+          NUMBER: ${{ github.event.pull_request.number }}
+          URL: ${{ github.event.pull_request.html_url }}
+        run: |
+          bump=$(jq -r 'if index("release:major") then "major" elif index("release:minor") then "minor" else "patch" end' <<<"$LABELS")
+          version=$(.github/scripts/release.sh "$bump" "$TITLE" "$NUMBER" "$URL" "$RUNNER_TEMP/notes.md")
+          echo "version=$version" >>"$GITHUB_OUTPUT"
+
+      - name: Commit, tag, and publish
+        env:
+          VERSION: ${{ steps.bump.outputs.version }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -am "[meta] Release v$VERSION"
+          git tag "v$VERSION"
+          git push origin HEAD:main "v$VERSION"
+          gh release create "v$VERSION" --title "v$VERSION" --notes-file "$RUNNER_TEMP/notes.md"

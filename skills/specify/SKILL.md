@@ -1,6 +1,6 @@
 ---
 name: specify
-description: Create a new feature spec in specs/, or refine and clarify an existing one. Use when starting a new piece of work or picking up a PLAN.md item; spikes go to /sdd:spike.
+description: Create a new feature spec in specs/, or refine and clarify an existing one. Use when starting a new piece of work or picking up a PLAN.md item; spikes go to /jsdd:spike.
 argument-hint: <idea | PLAN.md item | spec ID>
 ---
 
@@ -14,16 +14,16 @@ You write the WHAT and WHY of one slice of work. You do not plan or implement.
 
 - Read `specs/README.md` (the workflow) and `specs/constitution.md`.
 - Read the parts of `PLAN.md`, `BACKLOG.md`, and `docs/intent.md` that relate to the input. Use grep on headings rather than reading the intent doc whole.
-- Find the requirements the work covers in `docs/requirements.md`: the IDs and groups after the `·` on the PLAN.md item, or a search by topic. Run `sdd coverage <IDs or groups>` to see which already have a spec, and do not take one that another live spec covers unless the user agrees to split it.
-- Run `sdd status` to see existing specs, so you can set `depends_on` and avoid duplicates.
+- Find the requirements the work covers in `docs/requirements.md`: the IDs and groups after the `·` on the PLAN.md item, or a search by topic. Run `jsdd coverage <IDs or groups>` to see which already have a spec, and do not take one that another live spec covers unless the user agrees to split it.
+- Run `jsdd status` to see existing specs, so you can set `depends_on` and avoid duplicates.
 
 ## 2. Create or open the spec
 
-- If the input is a spec ID (for example `003`), claim it (`sdd claim 003`), open `specs/003-*/spec.md`, and go to step 4. If another session holds it, stop and report who.
+- If the input is a spec ID (for example `003`), claim it (`jsdd claim 003`), open `specs/003-*/spec.md`, and go to step 4. If another session holds it, stop and report who.
 - Otherwise pick the type: `spike` if the work answers questions or settles decisions (all PLAN.md Phase 0 spikes), `feature` if it delivers working behavior.
-- Spikes are run as an interview by `/sdd:spike`, not by this skill. For a spike (new, or an existing spike ID), stop here and follow the `/sdd:spike` skill instead.
+- Spikes are run as an interview by `/jsdd:spike`, not by this skill. For a spike (new, or an existing spike ID), stop here and follow the `/jsdd:spike` skill instead.
 - If the work is clearly larger than a few days, propose a split into several specs and confirm it with the user before creating them.
-- Create it: `sdd new <feature|spike> "<title>"`, then claim the new ID with `sdd claim <ID>`. Keep titles short and use the PLAN.md wording when the work comes from there.
+- Create it: `jsdd new <feature|spike> "<title>"`, then claim the new ID with `jsdd claim <ID>`. Keep titles short and use the PLAN.md wording when the work comes from there.
 
 ## 3. Write the spec
 
@@ -44,5 +44,5 @@ Fill in every section of the template and delete the guidance comments.
 
 ## 5. Finish
 
-- Keep `status: draft`. Release the spec (`sdd release <ID>`) and run `sdd status --write`.
-- Report in a few lines: the spec path, the requirement IDs it covers, any rows of `docs/requirements.md` you changed or added, the number of open questions left, and the next step: the user reviews the spec, then runs `/sdd:plan <ID>`.
+- Keep `status: draft`. Release the spec (`jsdd release <ID>`) and run `jsdd status --write`.
+- Report in a few lines: the spec path, the requirement IDs it covers, any rows of `docs/requirements.md` you changed or added, the number of open questions left, and the next step: the user reviews the spec, then runs `/jsdd:plan <ID>`.
