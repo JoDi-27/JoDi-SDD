@@ -81,6 +81,7 @@ printf '%s\n' '# Tasks' '' \
   '- [ ] **T1** First · `a` · check: `test -f specs/constitution.md` → AC-1' \
   '- [ ] **T2** Second · `b` · check: manual: look at it → AC-1' >"$dir/tasks.md"
 for f in "$spec" "$dir/tasks.md" docs/requirements.md; do to_crlf "$f"; done
+[ "$(tr -cd '\r' <"$dir/tasks.md" | wc -c | tr -d ' ')" = 4 ] || fail "to_crlf did not write CRLF: $(od -c "$dir/tasks.md" | head -4)"
 out=$("$jsdd" status)
 has "$out" '| 003 | feature | planned | - | 0/2 |' || fail "status misread a CRLF spec: $out"
 has "$out" 'Login "fast" \| flow' || fail "status lost the quoted title"
@@ -93,7 +94,8 @@ if "$jsdd" claim 003 T2 2>/dev/null; then fail "T2 was claimed before T1 was don
 "$jsdd" done 003 T1
 grep -q '^- \[x\] \*\*T1\*\*' "$dir/tasks.md" || fail "done did not tick T1"
 # (Count CRs with tr: grep in Git Bash drops them before matching.)
-[ "$(tr -cd '\r' <"$dir/tasks.md" | wc -c | tr -d ' ')" = 4 ] || fail "done dropped the CR of a CRLF line"
+crs() { tr -cd '\r' <"$1" | wc -c | tr -d ' '; }
+[ "$(crs "$dir/tasks.md")" = 4 ] || fail "done changed the CRLF line endings: $(crs "$dir/tasks.md") CRs in 4 lines: $(od -c "$dir/tasks.md" | head -4)"
 "$jsdd" claim 003 T2
 "$jsdd" done 003 T2 --manual "smoke looked"
 grep -q 'T2.*checked: smoke looked' "$dir/tasks.md" || fail "done --manual did not record the note"

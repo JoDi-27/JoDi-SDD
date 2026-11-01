@@ -486,7 +486,7 @@ check_of() {
 # repository root and ticks the task only when the check exits 0.
 cmd_done() {
   [ $# -ge 2 ] || { usage >&2; exit 1; }
-  local id dir f t row tab n line cmd note="" rc tmp
+  local id dir f t row tab n line cmd note="" rc tmp crlf
   id=$(norm_id "$1"); t=$(norm_task "$2"); shift 2
   if [ "${1:-}" = --manual ]; then
     note="${2:-}"
@@ -517,16 +517,17 @@ cmd_done() {
     exit 1
   fi
 
-  # Tick only that line; a manual check keeps its note on the task.
+  # Tick only that line; a manual check keeps its note on the task. A CRLF file
+  # stays CRLF. tr counts the CRs: awk in Git Bash drops them as it reads.
   tmp="$f.tmp.$$"
-  NOTE="$note" DATE="$(date +%F)" awk -v n="$n" '
+  crlf=0; [ "$(tr -cd '\r' <"$f" | wc -c)" -gt 0 ] && crlf=1
+  NOTE="$note" DATE="$(date +%F)" awk -v n="$n" -v crlf="$crlf" '
+    { sub(/\r$/, "") }
     NR == n {
-      cr = sub(/\r$/, "")   # keep a CRLF line CRLF
       sub(/- \[ \]/, "- [x]")
       if (ENVIRON["NOTE"] != "") $0 = $0 " · checked: " ENVIRON["NOTE"] " (" ENVIRON["DATE"] ")"
-      if (cr) $0 = $0 "\r"
     }
-    { print }' "$f" > "$tmp" && mv "$tmp" "$f"
+    { printf "%s%s\n", $0, (crlf ? "\r" : "") }' "$f" > "$tmp" && mv "$tmp" "$f"
   touch "$CLAIMS/$id-$t/done"
   if [ -n "$cmd" ]; then echo "check passed; ticked $id $t"; else echo "ticked $id $t (manual check recorded)"; fi
 }
