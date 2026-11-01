@@ -64,8 +64,8 @@ STEPS = ["specify", "plan", "implement", "verify"]
 
 TYPE_START = 0.6       # after scene start
 TYPE_CPS = 14          # characters per second
-FIRST_LINE = 0.8       # pause after typing
-LINE_GAP = 0.9
+FIRST_LINE = 1.0       # pause after typing
+LINE_GAP = 1.5
 HOLD = 2.6             # time to read a scene after its last line
 FINAL_HOLD = 5.0       # the board stays up longer before the loop restarts
 FADE = 0.25            # scene fade-out before its end
@@ -181,7 +181,7 @@ def build(theme):
                      f'<rect x="{cmd_x:.1f}" y="{Y0 - 14}" width="8" height="18" fill="{c["teal"]}" fill-opacity=".85"/></g>')
         t = t1 + FIRST_LINE
         for li, runs in enumerate(s["lines"]):
-            cls = anim([(0, "opacity: 0"), (t, "opacity: 0"), (t + 0.15, "opacity: 1"), (CYCLE, "opacity: 1")])
+            cls = anim([(0, "opacity: 0"), (t, "opacity: 0"), (t + 0.35, "opacity: 1"), (CYCLE, "opacity: 1")])
             parts.append(f'<g class="{cls} rm-line">{text_runs(runs, cmd_x, Y0 + (li + 1) * LH + 4)}</g>')
             t += LINE_GAP
         rm = "rm-show" if last else "rm-hide"
