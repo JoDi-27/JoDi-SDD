@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.2.0 (2026-11-01)
+
 Renamed: the repository and marketplace are now `jodi-sdd`, and the plugin and CLI are `jsdd`. Commands are `/jsdd:plan`, `/jsdd:verify`, and so on, and the script is `jsdd done`, `jsdd next`, and so on.
 
 **Upgrading from `sdd@sdd-kit`.** Swap the plugin, then run `/jsdd:init`, which replaces the old `Bash(sdd *)` permission with `Bash(jsdd *)`. Specs, claims, and the starters need no change.
