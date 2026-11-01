@@ -1,0 +1,23 @@
+name: Bug
+description: Something in jsdd, a skill, or a hook doesn't work as described.
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you ran, what you expected, and what you got instead. Paste the output if there is any.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: How to reproduce
+      description: The smallest set of steps, starting from `/jsdd:init` in a fresh repository if you can.
+  - type: input
+    id: version
+    attributes:
+      label: Versions
+      description: The plugin version (`claude plugin list`), `claude --version`, and your OS.
+    validations:
+      required: true
