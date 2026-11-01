@@ -32,7 +32,8 @@ Usage: jsdd <command>
                                 .gitignore lines; --migrate also removes a kit that
                                 install.sh copied into the project before the plugin.
                                 Also flags starter paths the project already uses in
-                                another format, and reports existing code and test commands
+                                another format, lists documents elsewhere that may hold
+                                a starter's content, and reports existing code and test commands
 
   new <feature|spike|baseline> <title>
                                 Create specs/NNN-slug/spec.md from a template
@@ -781,6 +782,51 @@ foreign_starters() {
   done
 }
 
+# source_for <path>: the starters a project document may cover, judged by its
+# name only. /jsdd:init reads each one to decide what it really covers.
+source_for() {
+  local n
+  n=$(basename "$1" | tr '[:upper:]' '[:lower:]')
+  case $n in
+    *prd*|*product?requirements*) echo "docs/intent.md docs/requirements.md" ;;
+    *requirement*|*features*) echo docs/requirements.md ;;
+    *intent*|*vision*|*product*|*overview*|*about*|*mission*) echo docs/intent.md ;;
+    adr|adrs|decisions|architecture?decisions|*decision*.md|adr?*.md) echo docs/decisions.md ;;
+  esac
+}
+
+# possible_sources: project documents outside the kit's paths that may already
+# hold a starter's content, as "<path>\t<starters>", for the starters that are
+# missing or still the kit's blank copy. Looks at the root and docs/ (or doc/),
+# one level of subfolders, and skips docs/legacy/, which init has already used.
+possible_sources() {
+  local p s f open
+  (cd "$ROOT" && find . -maxdepth 1 -type f -iname '*.md' 2>/dev/null
+   find . -mindepth 1 -maxdepth 1 -type d \( -iname adr -o -iname adrs -o -iname decisions \)
+   for d in docs doc; do
+     [ -d "$d" ] || continue
+     find "$d" -maxdepth 1 -type f -iname '*.md'
+     find "$d" -mindepth 1 -maxdepth 1 -type d ! -name legacy
+     find "$d" -mindepth 2 -maxdepth 2 -type f -iname '*.md' ! -path "$d/legacy/*"
+   done) | sed 's|^\./||' | sort | while IFS= read -r p; do
+    case $p in
+      README*|readme*|CHANGELOG*|CONTRIBUTING*|LICENSE*|SECURITY*|CODE_OF_CONDUCT*|CLAUDE.md|AGENTS.md) continue ;;
+      docs/intent.md|docs/requirements.md|docs/decisions.md|PLAN.md|BACKLOG.md) continue ;;
+    esac
+    # A file inside a decisions folder is covered by the folder.
+    case $(basename "$(dirname "$p")" | tr '[:upper:]' '[:lower:]') in
+      adr|adrs|decisions|architecture?decisions) continue ;;
+    esac
+    s=$(source_for "$p")
+    [ -d "$ROOT/$p" ] && { case $s in docs/decisions.md) p="$p/" ;; *) continue ;; esac; }
+    open=""
+    for f in $s; do
+      if [ ! -e "$ROOT/$f" ] || cmp -s "$STARTERS/$f" "$ROOT/$f"; then open="$open $f"; fi
+    done
+    [ -z "$open" ] || printf '%s\t%s\n' "$p" "${open# }"
+  done
+}
+
 # test_commands: test commands the project's build files suggest, one per line.
 test_commands() {
   local s
@@ -827,7 +873,7 @@ existing_code() {
 }
 
 cmd_init() {
-  local migrate="" dry="" a f old="" foreign settings="$ROOT/.claude/settings.json" json new
+  local migrate="" dry="" a f old="" foreign sources settings="$ROOT/.claude/settings.json" json new
   for a in "$@"; do
     case $a in
       --migrate) migrate=1 ;;
@@ -845,6 +891,7 @@ cmd_init() {
   fi
 
   foreign=$(foreign_starters | tr '\n' ' ')
+  sources=$(possible_sources)
   echo "Starters:"
   (cd "$STARTERS" && find . -type f ! -name .DS_Store | sed 's|^\./||' | sort) | while IFS= read -r f; do
     if [ ! -e "$ROOT/$f" ]; then
@@ -858,6 +905,13 @@ cmd_init() {
   if [ -n "$foreign" ]; then
     echo "  The kit cannot read the files marked keep. Move each to docs/legacy/ and run init"
     echo "  again to get the kit's version; /jsdd:init then folds the old content into it."
+  fi
+  if [ -n "$sources" ]; then
+    echo "Possible sources (by name only; /jsdd:init reads them to decide):"
+    printf '%s\n' "$sources" | while IFS="$(printf '\t')" read -r a f; do
+      case $a in PRODUCT_INTENT.md) a="$a (the install.sh kit's intent file)" ;; esac
+      echo "  source   $a for $(echo "$f" | sed 's/ / and /')"
+    done
   fi
 
   if [ -n "$old" ]; then

@@ -103,7 +103,7 @@ Baselines are written one area at a time, just before work first changes that ar
 
 ## Existing codebases
 
-`/jsdd:init` works on a project that already has code. `jsdd init` never overwrites a file: a project file at a kit path that is not in the kit's format (its own `PLAN.md`, say) is reported as `keep`, and `/jsdd:init` offers to move it to `docs/legacy/` and fold its content into the kit's version. It also reports the existing code and the test commands it finds.
+`/jsdd:init` works on a project that already has code. `jsdd init` never overwrites a file: a project file at a kit path that is not in the kit's format (its own `PLAN.md`, say) is reported as `keep`, and `/jsdd:init` offers to move it to `docs/legacy/` and fold its content into the kit's version. `jsdd init` also lists, as `source`, documents under other names that may hold a starter's content (`PRODUCT_INTENT.md`, `docs/PRD.md`, `docs/adr/`); `/jsdd:init` reads them and proposes what each one feeds, for you to confirm. It also reports the existing code and the test commands it finds.
 
 On an existing product the interview surveys the code (with the `sdd-surveyor` agent) for its areas, test command, conventions, and choices already made. It records rows only for the new behavior the next milestone brings, and plans one baseline per area the milestone touches, in Phase 0. Phase 1 is the next milestone rather than an MVP.
 

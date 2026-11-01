@@ -70,7 +70,7 @@ For an open question rather than a feature, run `/jsdd:spike <topic>` instead of
 
 The kit works on a project that already has code. It doesn't ask you to document the whole codebase up front. Instead, it records how an area works today just before new work first changes it:
 
-1. `/jsdd:init` notices the existing code. It surveys the codebase for its areas, test command, and conventions, and plans the next milestone rather than an MVP. If the project already has its own `PLAN.md` or `docs/requirements.md`, init offers to move it to `docs/legacy/` and carry its content into the kit's format. It never overwrites a file.
+1. `/jsdd:init` notices the existing code. It surveys the codebase for its areas, test command, and conventions, and plans the next milestone rather than an MVP. If the project already has its own `PLAN.md` or `docs/requirements.md`, init offers to move it to `docs/legacy/` and carry its content into the kit's format. The same goes for documents under other names, such as a `VISION.md`, a PRD, or a folder of ADRs: init reads them and proposes which starter each one feeds, for you to confirm. It never overwrites a file.
 2. Before a feature changes an area that has no requirements yet, `/jsdd:baseline <area>` reads that area's code and tests and drafts what it does today. You confirm which behavior is intended. Those become requirement rows and a *baseline spec*, whose acceptance criteria are the existing tests.
 3. `/jsdd:verify` runs those tests. When they pass, the baseline is done and its requirements count as done, without anything being rebuilt.
 4. The feature spec then cites the rows it changes. Coverage shows them in progress again until the feature is verified.
