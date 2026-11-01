@@ -25,10 +25,10 @@ Every PR merged into `main` is released by [the Release workflow](.github/workfl
 | Path | What |
 | --- | --- |
 | `skills/<name>/SKILL.md` | One skill each, run as `/jsdd:<name>` |
-| `agents/` | `sdd-reviewer` and `spike-researcher` |
+| `agents/` | `sdd-reviewer`, `spike-researcher`, and `sdd-surveyor` |
 | `hooks/` | Session-start board, `STATUS.md` regeneration, commit-message check, unreleased-claims warning. Registered in `hooks/hooks.json` |
 | `bin/jsdd` | The CLI (bash 3.2 and awk). It works on the git checkout of the current directory, or `$SDD_ROOT` |
-| `templates/` | `spec.md`, `spike.md`, `plan.md`, `tasks.md` |
+| `templates/` | `spec.md`, `spike.md`, `baseline.md`, `plan.md`, `tasks.md` |
 | `starters/` | What `jsdd init` copies into a project |
 | `.claude-plugin/` | `plugin.json`, and `marketplace.json` that makes this repository its own marketplace |
 

@@ -14,6 +14,7 @@ You write the HOW for one spec. You do not implement.
 
 - Open `specs/$ARGUMENTS-*/spec.md`. If no ID was given, run `jsdd next` and ask which spec to plan.
 - If the spec is a spike (`type: spike`), stop: spikes have no plan. Suggest `/jsdd:spike <ID>`.
+- If the spec is a baseline (`type: baseline`), stop: a baseline records existing behavior and has no plan. Suggest `/jsdd:baseline <ID>` or `/jsdd:verify <ID>`.
 - If the spec has any `[NEEDS CLARIFICATION` markers, stop: list them and suggest `/jsdd:specify <ID>`.
 - If any spec in `depends_on` is not `done`, say so and ask whether to plan anyway.
 - Claim the spec: `jsdd claim <ID>`. If another session holds it, stop and report who.

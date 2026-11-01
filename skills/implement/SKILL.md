@@ -12,6 +12,7 @@ Arguments: $ARGUMENTS (spec ID, then an optional task ID)
 
 - Open the spec folder `specs/<ID>-*/`. If no ID was given, run `jsdd next` and ask which one.
 - If the spec is a spike (`type: spike`), stop and follow the `/jsdd:spike` skill instead.
+- If the spec is a baseline (`type: baseline`), stop: nothing is built. Suggest `/jsdd:verify <ID>`.
 - The status must be `planned` or `in-progress`. If it is `draft` or `approved`, stop and suggest `/jsdd:plan <ID>`.
 - Running this command is the user's approval of the plan. If the status is `planned`, set it to `in-progress` and add a changelog line.
 - Read `specs/constitution.md`, `spec.md`, `plan.md`, and `tasks.md`.

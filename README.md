@@ -29,6 +29,7 @@ Requirement coverage:
 - **Reviews in a fresh context.** A reviewer agent that never saw the session that wrote the work checks each plan, and gives a verdict on each acceptance criterion before a spec is closed.
 - **Parallel sessions that don't collide.** A session claims a spec or task before it starts. Claims are shared across git worktrees, so several Claude sessions can work on one project without picking up the same work.
 - **Open questions get researched before you're asked.** A *spike* is a spec for answering a question rather than building something. A research agent writes a briefing with sources and asks you only what it can't look up. Your answers and the decisions they lead to stay in the project.
+- **Existing codebases.** On a project with code, each area is recorded just before work first changes it, as a *baseline* checked by the tests you already have. There's no up-front inventory. See [Existing codebases](#existing-codebases).
 - **Traceability.** Each requirement in `docs/requirements.md` has an ID (`FR-AUTH-02`). Specs cite those IDs, tasks cite the spec's acceptance criteria, and commits cite the task. `jsdd coverage` shows which requirements have a spec and which are done.
 
 Everything is plain Markdown in your repository, driven by one bash script. There's no build step and no service.
@@ -65,6 +66,17 @@ In a Claude Code session in your project:
 
 For an open question rather than a feature, run `/jsdd:spike <topic>` instead of steps 4 to 7.
 
+## Existing codebases
+
+The kit works on a project that already has code. It doesn't ask you to document the whole codebase up front. Instead, it records how an area works today just before new work first changes it:
+
+1. `/jsdd:init` notices the existing code. It surveys the codebase for its areas, test command, and conventions, and plans the next milestone rather than an MVP. If the project already has its own `PLAN.md` or `docs/requirements.md`, init offers to move it to `docs/legacy/` and carry its content into the kit's format. It never overwrites a file.
+2. Before a feature changes an area that has no requirements yet, `/jsdd:baseline <area>` reads that area's code and tests and drafts what it does today. You confirm which behavior is intended. Those become requirement rows and a *baseline spec*, whose acceptance criteria are the existing tests.
+3. `/jsdd:verify` runs those tests. When they pass, the baseline is done and its requirements count as done, without anything being rebuilt.
+4. The feature spec then cites the rows it changes. Coverage shows them in progress again until the feature is verified.
+
+Areas no work touches stay unrecorded. `/jsdd:specify` suggests a baseline when a feature reaches existing code that has none.
+
 The full workflow, including spec statuses, IDs, and the commit-message format, is in [starters/specs/README.md](starters/specs/README.md). `/jsdd:init` copies it into your project as `specs/README.md`.
 
 ## Commands
@@ -77,6 +89,7 @@ The full workflow, including spec statuses, IDs, and the commit-message format, 
 | `/jsdd:spike <topic or ID> [notes]` | Runs a spike: research first, then questions for you |
 | `/jsdd:plan <ID>` | Approves the spec, then writes the plan and tasks |
 | `/jsdd:implement <ID> [task]` | Works through the tasks |
+| `/jsdd:baseline <area or ID>` | Records how an area of existing code works today, checked by its existing tests |
 | `/jsdd:verify <ID>` | Checks the acceptance criteria (or a spike's answers) and closes the spec |
 
 Under the hood, these commands use the `jsdd` CLI, which the plugin adds to the PATH for Claude's Bash tool. Run `jsdd help` for its subcommands.

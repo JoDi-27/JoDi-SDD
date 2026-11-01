@@ -16,12 +16,13 @@ You write the WHAT and WHY of one slice of work. You do not plan or implement.
 - Read the parts of `PLAN.md`, `BACKLOG.md`, and `docs/intent.md` that relate to the input. Use grep on headings rather than reading the intent doc whole.
 - Find the requirements the work covers in `docs/requirements.md`: the IDs and groups after the `·` on the PLAN.md item, or a search by topic. Run `jsdd coverage <IDs or groups>` to see which already have a spec, and do not take one that another live spec covers unless the user agrees to split it.
 - Run `jsdd status` to see existing specs, so you can set `depends_on` and avoid duplicates.
+- **Existing code.** If the work changes code that already exists in an area with no rows in `docs/requirements.md`, suggest `/jsdd:baseline <area>` first: it records how the area works today, so this spec can cite the rows it changes and the existing tests guard against regressions. The user may skip it for a small change; then this spec adds the rows it needs. When the area has a baseline that is not `done`, add it to `depends_on`.
 
 ## 2. Create or open the spec
 
 - If the input is a spec ID (for example `003`), claim it (`jsdd claim 003`), open `specs/003-*/spec.md`, and go to step 4. If another session holds it, stop and report who.
 - Otherwise pick the type: `spike` if the work answers questions or settles decisions (all PLAN.md Phase 0 spikes), `feature` if it delivers working behavior.
-- Spikes are created and run as an interview by `/jsdd:spike`, not by this skill. For a spike (new, or an existing spike ID), stop here and follow the `/jsdd:spike` skill instead.
+- Spikes are created and run as an interview by `/jsdd:spike`, not by this skill. For a spike (new, or an existing spike ID), stop here and follow the `/jsdd:spike` skill instead. The same goes for a baseline (`type: baseline`): follow `/jsdd:baseline`.
 - If the work is clearly larger than a few days, propose a split into several specs and confirm it with the user before creating them.
 - Create it: `jsdd new feature "<title>"`, then claim the new ID with `jsdd claim <ID>`. Keep titles short and use the PLAN.md wording when the work comes from there.
 
@@ -32,6 +33,7 @@ Fill in every section of the template and delete the guidance comments.
 - Frontmatter: `phase` (PLAN.md phase number), `depends_on` (spec IDs that must be done first), `refs` (the PLAN.md and BACKLOG.md items it delivers or settles, and every requirement ID from `docs/requirements.md` it covers, as quoted strings, for example `"FR-AUTH-05"`), `updated` (today).
 - Problem, scope in and out, user scenarios, numbered requirements in EARS form, and acceptance criteria that are observable and testable. Every requirement is covered by at least one acceptance criterion. No technology, schemas, or code.
 - `docs/requirements.md` is the product-level list; the spec makes its rows testable. Tag each R with the requirement IDs it refines, as `**R1** (FR-AUTH-05) When …`. Every ID in `refs` is tagged on at least one R; an R with no ID is allowed only for behavior the listed rows imply.
+- A spec that changes behavior a baseline recorded cites the same row and tags the R that changes it, for example `**R2** (FR-AUTH-01) When a reset token is valid, …`. Reword the row in `docs/requirements.md` to the new behavior in the same change. Until this spec is done, `jsdd coverage` shows the row as in progress again.
 - Where a row is too vague to build from, add a `[NEEDS CLARIFICATION]` marker rather than guessing. When the user's answer changes what a row means, or adds behavior no row has, edit `docs/requirements.md` in the same change: reword the row, or add a new row with the next ID in its group and a priority (Article 4).
 - A measurable NFR the spec delivers (for example a response time) becomes an acceptance criterion. NFRs that apply to everything are product articles, checked in the plan, and need no R.
 - Never guess. Anything unknown becomes `[NEEDS CLARIFICATION: <specific question>]` in the section where it matters.
