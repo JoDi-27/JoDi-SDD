@@ -3,7 +3,7 @@
   <img src=".github/assets/banner-light.svg" alt="JoDi-SDD: Spec-driven development for Claude Code, as a plugin." width="100%">
 </picture>
 
-# sdd-kit
+# JoDi-SDD
 
 Spec-driven development for [Claude Code](https://claude.com/claude-code), as a plugin.
 
