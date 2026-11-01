@@ -78,7 +78,7 @@ dirty=$(git -C "$KIT" status --porcelain 2>/dev/null | head -1)
 
 echo
 [ -n "$dry" ] && echo "Dry run: nothing changed."
-echo "Kit version $version in $target/specs/_kit/VERSION."
+[ -n "$dry" ] || echo "Kit version $version in $target/specs/_kit/VERSION."
 if [ ! -f "$target/docs/requirements.md" ] || grep -q 'FR-AUTH-01 | <one behavior>' "$target/docs/requirements.md" 2>/dev/null; then
   cat <<EOF
 
