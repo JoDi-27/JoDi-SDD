@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.5.1 (2026-11-01)
+
 - The README covers updating and uninstalling the plugin, and shows CI, release, and license badges.
 
 ## 0.5.0 (2026-11-01)
