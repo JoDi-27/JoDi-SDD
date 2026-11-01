@@ -1,6 +1,6 @@
 ---
 name: sdd-reviewer
-description: Use this agent for a fresh-context review of one spec in specs/. In plan mode it checks plan.md and tasks.md against the spec, the constitution, and the architecture checklist before the user reviews the plan. In verify mode it gives one verdict per acceptance criterion, with evidence and gaps, from the spec folder and the code changes. It never sees the session that wrote the work, so it judges only what is on disk. Read-only; it returns a report and never edits files. Launched by the /sdd:plan and /sdd:verify skills.
+description: Use this agent for a fresh-context review of one spec in specs/. In plan mode it checks plan.md and tasks.md against the spec, the constitution, and the architecture checklist before the user reviews the plan. In verify mode it gives one verdict per acceptance criterion, with evidence and gaps, from the spec folder and the code changes. It never sees the session that wrote the work, so it judges only what is on disk. Read-only; it returns a report and never edits files. Launched by the /jsdd:plan and /jsdd:verify skills.
 model: inherit
 color: yellow
 tools: ["Read", "Grep", "Glob", "Bash"]

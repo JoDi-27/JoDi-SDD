@@ -10,7 +10,7 @@ One line per open decision: its `ND-nn`, a one-line summary, and a suggested def
 
 ## Spikes
 
-Run each with `/sdd:spike <topic>`. The skill creates the spike spec from the entry here, one goal question per bullet.
+Run each with `/jsdd:spike <topic>`. The skill creates the spike spec from the entry here, one goal question per bullet.
 
 ### <Spike name>
 

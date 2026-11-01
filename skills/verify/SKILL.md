@@ -13,8 +13,8 @@ You prove that the spec is met. You do not add features.
 ## 1. Gate
 
 - Open `specs/$ARGUMENTS-*/`. The status must be `in-progress`.
-- Claim the spec: `sdd claim <ID>`. If another session holds the spec or one of its tasks, stop and report who.
-- Every task must be ticked; for a spike, every goal question and question for the user, and the first deliverable (recommendation agreed). If not, list what is left and suggest `/sdd:implement <ID>` (features) or `/sdd:spike <ID>` (spikes).
+- Claim the spec: `jsdd claim <ID>`. If another session holds the spec or one of its tasks, stop and report who.
+- Every task must be ticked; for a spike, every goal question and question for the user, and the first deliverable (recommendation agreed). If not, list what is left and suggest `/jsdd:implement <ID>` (features) or `/jsdd:spike <ID>` (spikes).
 
 ## 2a. Feature: check every acceptance criterion
 
@@ -25,7 +25,7 @@ You prove that the spec is met. You do not add features.
 - Also confirm: the full build and test suite pass, every requirement is covered by a passing AC, every requirement ID in the spec's `refs` is tagged on an R whose ACs pass, and the plan's Deviations reflect what was built. An ID in `refs` that the work only partly delivers is either split into a new row of `docs/requirements.md` (and the delivered part kept in `refs`) or removed from `refs`, with the user's agreement.
 - Compare with the reviewer's report. Where it says an AC is failed or unproven and you found it passing, look again: a test that passes without exercising the behavior does not prove the AC. Treat a disagreement you cannot settle as a failure, or ask the user. Report its other blocking findings to the user.
 
-If any AC fails, do not close the spec. Add a fix task for each failure to `tasks.md`, keep `in-progress`, release the spec, report the failures, and suggest `/sdd:implement <ID>`.
+If any AC fails, do not close the spec. Add a fix task for each failure to `tasks.md`, keep `in-progress`, release the spec, report the failures, and suggest `/jsdd:implement <ID>`.
 
 ## 2b. Spike: check the answers
 
@@ -39,7 +39,7 @@ If any AC fails, do not close the spec. Add a fix task for each failure to `task
 
 - Tick the spike's Deliverables.
 - Check `docs/decisions.md`: each decision the spike or spec settled is a `DEC-nn` row under Decided; move or add it if not.
-- Tick the PLAN.md checkbox(es) for the items in the spec's `refs` that are now complete: an item is complete when `sdd coverage` shows every Must it names as done. Update BACKLOG.md items it settles, if not done already.
+- Tick the PLAN.md checkbox(es) for the items in the spec's `refs` that are now complete: an item is complete when `jsdd coverage` shows every Must it names as done. Update BACKLOG.md items it settles, if not done already.
 - Set `status: done` and `updated` in the spec, and add a changelog line.
-- Release the spec and clear its leftover claims: `sdd release <ID>`, then `sdd claims --prune`. Run `sdd status --write`.
-- Report briefly: the result per AC (or per question), the PLAN and BACKLOG items updated, the requirement IDs now done (`sdd coverage <IDs>`), and what `sdd next` now shows.
+- Release the spec and clear its leftover claims: `jsdd release <ID>`, then `jsdd claims --prune`. Run `jsdd status --write`.
+- Report briefly: the result per AC (or per question), the PLAN and BACKLOG items updated, the requirement IDs now done (`jsdd coverage <IDs>`), and what `jsdd next` now shows.

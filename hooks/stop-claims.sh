@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# Stop: warn (never block) when this session still holds sdd claims.
+# Stop: warn (never block) when this session still holds jsdd claims.
 input=$(cat)
 sid=$(printf '%s' "$input" | jq -r '.session_id // empty')
 [ -n "$sid" ] || exit 0
 cwd=$(printf '%s' "$input" | jq -r '.cwd // empty')
 root=$(git -C "${cwd:-.}" rev-parse --show-toplevel 2>/dev/null) || root="${CLAUDE_PROJECT_DIR:-${cwd:-.}}"
 cd "$root" || exit 0
-[ -f specs/constitution.md ] || exit 0   # not set up with sdd init
+[ -f specs/constitution.md ] || exit 0   # not set up with jsdd init
 # Where bin/sdd keeps claims: the git common dir, else specs/.claims.
 if common=$(git rev-parse --git-common-dir 2>/dev/null); then
   dir="$(cd "$common" && pwd)/sdd-claims"
@@ -23,6 +23,6 @@ for c in "$dir"/*/; do
   [ "$(sed -n 's/^owner=//p' "$c/owner" | head -1)" = "$sid" ] && held="$held $name"
 done
 [ -n "$held" ] || exit 0
-msg="This session still holds sdd claims:$held. Finish a task with: sdd done <ID> <Tn>, or release with: sdd release <ID> [Tn]"
+msg="This session still holds jsdd claims:$held. Finish a task with: jsdd done <ID> <Tn>, or release with: jsdd release <ID> [Tn]"
 jq -n --arg m "$msg" '{systemMessage: $m}'
 exit 0

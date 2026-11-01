@@ -1,8 +1,8 @@
 # Requirements
 
-> The product-level list of what the product must do. Specs in `specs/` make these rows testable and link back by ID; progress comes from `sdd coverage`, never from a status column here.
+> The product-level list of what the product must do. Specs in `specs/` make these rows testable and link back by ID; progress comes from `jsdd coverage`, never from a status column here.
 
-**Format.** `sdd coverage` reads every table row whose first cell is an ID like `FR-AUTH-01` or `NFR-SEC-01`. Functional rows have four cells (ID, requirement, source, priority); the priority is `M` Must, `S` Should, `C` Could, or `W` Won't. NFR rows may leave out source and priority. IDs never change once a spec cites them: reword a row in place, or add a new one (`FR-AUTH-01b`) for a split.
+**Format.** `jsdd coverage` reads every table row whose first cell is an ID like `FR-AUTH-01` or `NFR-SEC-01`. Functional rows have four cells (ID, requirement, source, priority); the priority is `M` Must, `S` Should, `C` Could, or `W` Won't. NFR rows may leave out source and priority. IDs never change once a spec cites them: reword a row in place, or add a new one (`FR-AUTH-01b`) for a split.
 
 ## 1. Functional requirements
 
