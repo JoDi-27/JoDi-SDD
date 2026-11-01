@@ -10,7 +10,7 @@ You don't need to install the plugin to test it. Run Claude Code in a test proje
 claude --plugin-dir path/to/jodi-sdd
 ```
 
-Check the manifests with `claude plugin validate .`.
+Check the manifests with `claude plugin validate .`, and run `/bin/bash .github/scripts/smoke.sh` for an end-to-end test of `jsdd` and the hooks in a throwaway repository. [CI](.github/workflows/ci.yml) runs both on every pull request, plus `shellcheck -S warning` on the scripts, on Linux and on macOS's bash 3.2.
 
 ## Releasing
 

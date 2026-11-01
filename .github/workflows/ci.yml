@@ -1,0 +1,40 @@
+# Checks every pull request and push to main: the plugin manifests, shellcheck
+# on the scripts, and a smoke test of jsdd and the hooks on Linux and on macOS,
+# whose stock bash is 3.2.
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Manifests are valid JSON
+        run: |
+          for f in .claude-plugin/*.json hooks/hooks.json; do jq empty "$f"; done
+
+      - name: Validate the plugin
+        run: npx --yes @anthropic-ai/claude-code@2.1.314 plugin validate .
+
+      - name: Shellcheck
+        run: shellcheck -S warning bin/jsdd hooks/*.sh .github/scripts/*.sh
+
+  smoke:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Smoke test
+        # /bin/bash is 3.2 on macOS, the oldest bash jsdd supports.
+        run: /bin/bash .github/scripts/smoke.sh

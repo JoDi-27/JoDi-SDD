@@ -88,7 +88,7 @@ Under the hood, these commands use the `jsdd` CLI, which the plugin adds to the 
 | `docs/requirements.md` | Requirements with IDs (`FR-`, `NFR-`) and priorities |
 | `docs/decisions.md` | Settled decisions (`DEC-nn`) and open ones (`ND-nn`) |
 | `PLAN.md` | Phases, each item tagged with the requirements it covers |
-| `BACKLOG.md` | Open decisions with suggested defaults, and spikes with their questions |
+| `BACKLOG.md` | One line per open decision with a suggested default, and spikes with their questions |
 | `specs/constitution.md` | Rules every plan is checked against, plus your project's test command and architecture rules |
 | `specs/README.md` | How the workflow runs |
 
@@ -96,7 +96,7 @@ These are your files. Running `/jsdd:init` again only updates `specs/README.md`,
 
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for how the plugin is laid out, how to test changes locally, and how to add a new command.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for how the plugin is laid out, how to test changes locally, and how to add a new command. Report security issues privately, as described in [SECURITY.md](SECURITY.md).
 
 ## License
 
