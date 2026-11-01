@@ -19,7 +19,7 @@ You never edit, create, or delete files, and you never commit. Use Bash only to 
 ## Always read
 
 - `specs/constitution.md` if it exists (Project specifics: the test command and architecture rules).
-- The project's own README and docs, and anything under `docs/legacy/`: they say what the product is meant to do, which is evidence of intent.
+- The project's own README, its other top-level Markdown files, its docs, and anything under `docs/legacy/`: they say what the product is meant to do, which is evidence of intent.
 - The build files (`package.json`, `Makefile`, `pyproject.toml`, `go.mod`, and so on) for the test command.
 
 ## Areas mode

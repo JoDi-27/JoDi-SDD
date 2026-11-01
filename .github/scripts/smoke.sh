@@ -43,6 +43,19 @@ for h in "$kit"/hooks/*.sh; do
   [ -z "$out" ] || fail "$(basename "$h") printed output in a project without jsdd: $out"
 done
 
+step "init lists documents that may hold a starter's content"
+mkdir -p docs/adr
+echo "# Product intent" >PRODUCT_INTENT.md
+echo "# PRD" >docs/PRD.md
+echo "# Use Postgres" >docs/adr/0001-use-postgres.md
+echo "# Readme" >README.md
+out=$("$jsdd" init --dry-run)
+has "$out" "source   PRODUCT_INTENT.md (the install.sh kit's intent file) for docs/intent.md" || fail "init did not list PRODUCT_INTENT.md: $out"
+has "$out" "source   docs/PRD.md for docs/intent.md and docs/requirements.md" || fail "init did not list docs/PRD.md: $out"
+has "$out" "source   docs/adr/ for docs/decisions.md" || fail "init did not list docs/adr/: $out"
+! has "$out" "README.md for" || fail "init listed README.md as a source: $out"
+! has "$out" "0001-use-postgres" || fail "init listed a file inside docs/adr/ on its own: $out"
+
 step "init"
 "$jsdd" init
 for f in docs/intent.md docs/requirements.md docs/decisions.md PLAN.md BACKLOG.md specs/constitution.md specs/README.md; do
@@ -54,6 +67,10 @@ step "init again keeps the project's files"
 echo "kept" >>docs/intent.md
 "$jsdd" init >/dev/null
 grep -q '^kept$' docs/intent.md || fail "a second init overwrote docs/intent.md"
+out=$("$jsdd" init --dry-run)
+! has "$out" "PRODUCT_INTENT.md" || fail "init listed a source for docs/intent.md once it was filled in: $out"
+has "$out" "docs/adr/ for docs/decisions.md" || fail "init stopped listing docs/adr/ while docs/decisions.md is blank: $out"
+rm -r PRODUCT_INTENT.md docs/PRD.md docs/adr README.md
 
 step "new"
 "$jsdd" new feature "Password reset by email"
