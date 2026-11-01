@@ -13,16 +13,10 @@ Spec-driven development for [Claude Code](https://claude.com/claude-code), as a 
 
 Claude Code is fast, but on bigger features it drifts: it forgets what was decided, says work is done when it isn't, and loses track between sessions. JoDi-SDD turns each piece of work into a written spec that you approve one step at a time (specify → plan → implement → verify), with checks Claude can't skip and a board that tells you and Claude what to do next.
 
-```
-Next up:
-  001  in-progress Password reset by email   /jsdd:implement 001   (T3 free)
-  003  draft       Which email provider      /jsdd:spike 003
-  002  waiting on 001
-
-Requirement coverage:
-  Must                  2   with a spec   1   done   0
-  Should                1   with a spec   1   done   0
-```
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset=".github/assets/demo-dark.svg">
+  <img src=".github/assets/demo-light.svg" alt="A password-reset spec moving through /jsdd:specify, /jsdd:plan, /jsdd:implement and /jsdd:verify. A task whose check fails stays unticked until the check passes. Then /jsdd:status shows what to do next." width="100%">
+</picture>
 
 > Early release (0.x). The workflow is stable, but names and file formats may still change. Feedback and issues are welcome.
 
