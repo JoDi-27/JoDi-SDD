@@ -1,71 +1,101 @@
 # sdd-kit
 
-A lightweight spec-driven development (SDD) kit for Claude Code, packaged as a plugin (`sdd`) to enable in any project or prototype. Every piece of work starts as a spec, moves through reviewed steps (specify → plan → implement → verify, or an interview-style spike), and links back to the product's requirements by ID.
+Spec-driven development for Claude Code, as a plugin. Every piece of work starts as a spec in `specs/`, moves through steps you review (specify → plan → implement → verify), and links back to your product's requirements by ID. Open questions are run as spikes: interviews where Claude researches what it can and asks you only what it can't look up.
 
-It is plain Markdown, one bash script, seven skills, two subagents, and four hooks. No dependencies beyond `bash`, `awk`, `jq`, and `python3`.
+It is plain Markdown, one bash script, seven skills, two subagents, and four hooks. No build step, and no dependencies beyond `bash`, `awk`, `jq`, and `python3`.
 
-## Use it in a project
+## Why this one
 
-This repository is its own plugin marketplace. In the project:
+- **Checks that have to pass.** Every task carries a check command, and `sdd done` ticks the task only when that command exits 0. Claude can't mark work finished by editing a checkbox.
+- **Parallel sessions that don't collide.** Sessions claim a spec or a task before starting it. Claims are shared across git worktrees on the machine, so several Claude sessions can work on one project without picking the same work.
+- **Traceability from requirement to evidence.** `FR-AUTH-05` → spec requirement `R1` → acceptance criterion `AC-1` → task `T3` → commit `[003] T3 …` → evidence row. `sdd coverage` shows which requirements have a spec and which are done.
+- **Spikes as interviews.** A research agent writes a briefing with sources and drafts questions only you can answer. Your answers go into a log and findings that survive across sessions, until the spike ends in agreed decisions.
+- **A second opinion with fresh context.** A reviewer agent that never saw the session that wrote the work checks each plan, and gives a verdict on each acceptance criterion at verify time.
+- **Human gates.** Each step stops for your review. Running the next command is the approval.
+
+## Install
+
+In the project where you want it:
 
 ```sh
-claude plugin marketplace add ~/repos/personal/sdd-kit --scope project
+claude plugin marketplace add JoDi-27/sdd-kit --scope project
 claude plugin install sdd@sdd-kit --scope project
 ```
 
-Both write to the project's `.claude/settings.json` (`extraKnownMarketplaces`, `enabledPlugins`), so the plugin runs only in projects that enable it. Then start a Claude Code session there and run `/sdd:init`. It copies the starters, allows `sdd` in the project's settings, and adds `.claude/settings.local.json` to `.gitignore`. Start a new session so the hooks see the project, then run `/sdd:status`. The full workflow is in [starters/specs/README.md](starters/specs/README.md), which is installed as `specs/README.md`.
+Project scope writes the plugin into the project's `.claude/settings.json`, so it runs only there, and teammates who clone the project are offered it. Use `--scope user` to have it everywhere. Its hooks do nothing in a project that hasn't been set up with `/sdd:init`.
 
-The hooks also check for `specs/constitution.md` and do nothing without it, so enabling the plugin at user scope is safe too.
+## Quick start
 
-### Moving a project off the old install.sh copy
+In a Claude Code session in the project:
 
-Projects set up with the old `install.sh` have the kit in `.claude/` and `specs/_kit/`. Enable the plugin, then run `/sdd:init --migrate`: it removes the old skills, agents, hooks, and `specs/_kit/`, takes the old hooks and permission out of `.claude/settings.json`, and moves project tweaks (test command, architecture rules) into `specs/constitution.md`. Without `--migrate`, `sdd init` refuses to run there, because every hook would run twice.
+1. `/sdd:init` copies the starter documents (intent, requirements, decisions, PLAN, BACKLOG, constitution) and allows the `sdd` script in the project's settings. Start a new session afterwards so the hooks pick up the project.
+2. Fill in `docs/intent.md` and `docs/requirements.md`, then the phases in `PLAN.md`. Claude can draft these with you.
+3. `/sdd:status` shows the board and what to do next.
+4. `/sdd:specify <PLAN item or idea>` writes a spec and asks you the questions that block it.
+5. `/sdd:plan <ID>` approves the spec and writes `plan.md` and `tasks.md`, reviewed by the reviewer agent.
+6. `/sdd:implement <ID>` works through the tasks, ticking each one when its check passes.
+7. `/sdd:verify <ID>` checks every acceptance criterion with evidence and closes the spec.
 
-## What is in the plugin
+For open questions, use `/sdd:spike <topic>` instead of steps 4 to 7. The full workflow is in [starters/specs/README.md](starters/specs/README.md), which `/sdd:init` copies into the project as `specs/README.md`.
+
+## Commands
+
+| Command | Does |
+| --- | --- |
+| `/sdd:init [--migrate]` | Sets up the project |
+| `/sdd:status [ID]` | The board, what to do next, and requirement coverage |
+| `/sdd:specify <idea, PLAN item, or ID>` | Creates or refines a feature spec |
+| `/sdd:spike <topic or ID> [notes]` | Runs a spike as an interview |
+| `/sdd:plan <ID>` | Approves the spec, then writes the plan and tasks |
+| `/sdd:implement <ID> [task]` | Works through the tasks |
+| `/sdd:verify <ID>` | Verifies acceptance criteria (or a spike's answers) and closes the spec |
+
+The skills drive the `sdd` script, which the plugin puts on the PATH of Claude's Bash tool: `sdd new`, `status`, `next`, `claim`, `release`, `done`, `claims`, `coverage`. Run `sdd help` for details.
+
+## What `/sdd:init` adds to a project
 
 | Path | What |
 | --- | --- |
-| `skills/` | `/sdd:specify`, `/sdd:plan`, `/sdd:implement`, `/sdd:spike`, `/sdd:verify`, `/sdd:status`, `/sdd:init` |
-| `agents/` | `sdd-reviewer` (fresh-context plan and verify review), `spike-researcher` (briefings and questions for spikes) |
-| `hooks/` | Board at session start, `specs/STATUS.md` regenerated on edits, `[NNN]`/`[meta]` commit messages enforced, unreleased claims warned at stop. Registered in `hooks/hooks.json` |
-| `bin/sdd` | The CLI: `init`, `new`, `status`, `next`, `claim`, `release`, `done`, `claims`, `coverage`. The plugin puts it on the Bash tool's PATH; it works on the git checkout of the current directory (or `$SDD_ROOT`) |
-| `templates/` | `spec.md`, `spike.md`, `plan.md`, `tasks.md`, used by `sdd new` and `/sdd:plan` |
-| `starters/` | Copied into the project by `sdd init` |
-| `.claude-plugin/` | `plugin.json` (the plugin) and `marketplace.json` (this repo as a marketplace) |
+| `docs/intent.md` | What you are building and why |
+| `docs/requirements.md` | `FR-`/`NFR-` rows with IDs and priorities |
+| `docs/decisions.md` | Settled decisions (`DEC-nn`) and open ones (`ND-nn`) |
+| `PLAN.md` | Phases, each item tagged with the requirement IDs it covers |
+| `BACKLOG.md` | Open decisions with suggested defaults, spikes with their questions |
+| `specs/constitution.md` | The rules every plan is checked against, plus Project specifics |
+| `specs/README.md` | How the workflow runs (refreshed by `/sdd:init` when the plugin changes it) |
 
-**Starters**, copied where missing and then owned by the project:
-
-| Path | What |
-| --- | --- |
-| `docs/intent.md` | What and why, the short version |
-| `docs/requirements.md` | `FR-`/`NFR-` rows with priorities, in the table shape `sdd coverage` reads |
-| `docs/decisions.md` | `DEC-nn` settled, `ND-nn` open |
-| `PLAN.md` | Phases, with items tagged by the requirement IDs they cover |
-| `BACKLOG.md` | Open decisions with suggested defaults, spikes with goal questions, "Next" |
-| `specs/constitution.md` | Product articles (yours to write), six engineering articles, and Project specifics: the test command and the reviewer's architecture checklist |
-| `specs/README.md` | How the workflow runs. Kit-owned: `sdd init` refreshes it when it differs |
+It never overwrites the other files once they exist: they are the project's.
 
 ## Per-project settings
 
-Everything a project tunes lives in its own `specs/constitution.md`, under "Project specifics": the test command plans use in task checks, and the architecture rules `sdd-reviewer` checks. The plugin files stay the same for every project.
+The plugin files are the same in every project. What a project tunes goes in its `specs/constitution.md`, under "Project specifics": the test command that plans use in task checks, and the architecture rules the reviewer checks.
 
-## Improving the kit
+## Upgrading from the install.sh version
 
-Change it here and commit, bumping `version` in `.claude-plugin/plugin.json`. Projects pick it up with `claude plugin update sdd@sdd-kit` (or `/plugin`), then a new session. To try a change before committing, run Claude Code with `claude --plugin-dir ~/repos/personal/sdd-kit` in a test project. Check the manifests with `claude plugin validate .`.
+Before it was a plugin, this kit was copied into each project by `install.sh`, into `.claude/` and `specs/_kit/`. In such a project, install the plugin and run `/sdd:init --migrate`. It removes the old copy and takes the old hooks out of `.claude/settings.json`, keeping the project's own settings. It also moves tweaks such as the test command into the constitution.
 
-## Adding a new engineering flow
+## Developing
 
-A flow is a skill, plus agents or hooks if it needs them:
+Try changes without installing: `claude --plugin-dir path/to/sdd-kit` in a test project. Check the manifests with `claude plugin validate .`. Bump `version` in `.claude-plugin/plugin.json` for a release; projects take it with `claude plugin update sdd@sdd-kit`.
 
-1. **Skill:** `skills/<flow>/SKILL.md` with `name`, `description` (when to use it; Claude reads this to decide), and `argument-hint` in its frontmatter. It runs as `/sdd:<flow>`. Write it as numbered steps with a gate at the start (what must be true to begin) and a report at the end (what was done, and the next command). Look at `skills/plan` for the shape. `${CLAUDE_PLUGIN_ROOT}` in the body is replaced with the plugin's path.
-2. **Agent** (optional, for a fresh-context or read-only helper): `agents/<name>.md` with `name`, `description`, `tools`, and a fixed output format the calling skill can paste or act on.
-3. **Hook** (optional, for something that must happen every time): a script in `hooks/` whose line 2 is `# <Event> on <matcher>: <what it does>`, registered in `hooks/hooks.json`. Hooks read their input as JSON on stdin, need to work without git, and exit quietly in a project without `specs/constitution.md`.
-4. **State** the flow keeps goes in files in the project (like `specs/`), never only in the conversation.
-5. If the flow touches specs, use the `sdd` CLI rather than editing status or checkboxes by hand, and add a subcommand to `bin/sdd` when it needs a new one.
-6. **Settings** a project needs to tune go in the constitution's Project specifics, not in the plugin.
+| Path | What |
+| --- | --- |
+| `skills/<name>/SKILL.md` | One skill each, run as `/sdd:<name>` |
+| `agents/` | `sdd-reviewer` and `spike-researcher` |
+| `hooks/` | Session-start board, `STATUS.md` regeneration, commit-message check, unreleased-claims warning. Registered in `hooks/hooks.json` |
+| `bin/sdd` | The CLI (bash 3.2 and awk). It works on the git checkout of the current directory, or `$SDD_ROOT` |
+| `templates/` | `spec.md`, `spike.md`, `plan.md`, `tasks.md` |
+| `starters/` | What `sdd init` copies into a project |
+| `.claude-plugin/` | `plugin.json`, and `marketplace.json` that makes this repository its own marketplace |
 
-Then document it in `starters/specs/README.md` and in the tables above.
+To add a flow:
 
-## Origin
+1. **Skill:** `skills/<flow>/SKILL.md` with `name`, `description` (when to use it; Claude reads it to decide), and `argument-hint` in the frontmatter. Write it as numbered steps, with a gate at the start (what must be true to begin) and a report at the end (what was done, and the next command). `skills/plan` shows the shape. `${CLAUDE_PLUGIN_ROOT}` in the body becomes the plugin's path.
+2. **Agent** (optional, for a fresh-context or read-only helper): `agents/<name>.md` with `name`, `description`, `tools`, and a fixed output format the calling skill can use.
+3. **Hook** (optional, for something that must happen every time): a script in `hooks/` whose line 2 is `# <Event> on <matcher>: <what it does>`, registered in `hooks/hooks.json`. Hooks read JSON on stdin, must work without git, and exit quietly in a project without `specs/constitution.md`.
+4. **State** goes in files in the project, never only in the conversation. If the flow touches specs, it uses the `sdd` CLI rather than editing status or checkboxes by hand, and adds a subcommand when it needs one.
+5. Document it in `starters/specs/README.md` and in the tables above.
 
-Extracted from `ai-workflow-poc`, then generalized in `gym-app`, which added requirement traceability (`sdd coverage`, FR tags in PLAN, requirement checks in the skills and the reviewer). Shipped by `install.sh` until it became a plugin.
+## License
+
+[MIT](LICENSE)

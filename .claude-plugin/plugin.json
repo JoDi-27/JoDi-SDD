@@ -2,5 +2,10 @@
   "name": "sdd",
   "version": "0.1.0",
   "description": "Spec-driven development: specify, plan, implement, and verify work as specs in specs/, with spikes run as interviews, claims for parallel sessions, and requirement traceability.",
-  "author": { "name": "JoDi27" }
+  "author": {
+    "name": "JoDi27"
+  },
+  "license": "MIT",
+  "repository": "https://github.com/JoDi-27/sdd-kit",
+  "homepage": "https://github.com/JoDi-27/sdd-kit"
 }
