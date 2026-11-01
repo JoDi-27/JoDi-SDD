@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
 # PostToolUse on Edit|Write: regenerate specs/STATUS.md when a spec.md, tasks.md, or the root PLAN.md or docs/requirements.md changed.
-input=$(cat)
-. "$(dirname "$0")/_lib.sh"
+. "$(dirname "$0")/_lib.sh"   # reads the hook input
 file=$(posix_path "$(json '.tool_input.file_path // empty')")
 rootdoc=""
 case "$file" in

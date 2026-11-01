@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
 # Stop: warn (never block) when this session still holds jsdd claims.
-input=$(cat)
-. "$(dirname "$0")/_lib.sh"
+. "$(dirname "$0")/_lib.sh"   # reads the hook input
 sid=$(json '.session_id // empty')
 [ -n "$sid" ] || exit 0
 cwd=$(json '.cwd // empty')

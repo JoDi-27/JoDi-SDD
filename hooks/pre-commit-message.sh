@@ -1,8 +1,7 @@
 #!/usr/bin/env bash
 # PreToolUse on Bash: block `git commit` whose message does not start with `[NNN]`, `[NNN] Tn`, or `[meta]`.
 # Exit 2 blocks the call and sends stderr to Claude.
-input=$(cat)
-. "$(dirname "$0")/_lib.sh"
+. "$(dirname "$0")/_lib.sh"   # reads the hook input
 cmd=$(json '.tool_input.command // empty')
 # git, its global options (flags, or -c/-C/--git-dir/... with a separate,
 # possibly quoted, argument), then commit.

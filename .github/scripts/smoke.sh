@@ -91,7 +91,9 @@ export CLAUDE_CODE_SESSION_ID=smoke
 [ "$("$jsdd" claim 003 next)" = T1 ] || fail "claim next did not pick T1"
 if "$jsdd" claim 003 T2 2>/dev/null; then fail "T2 was claimed before T1 was done"; fi
 "$jsdd" done 003 T1
-grep -q '^- \[x\] \*\*T1\*\*.*AC-1'$'\r''$' "$dir/tasks.md" || fail "done did not tick T1, or dropped its CR"
+grep -q '^- \[x\] \*\*T1\*\*' "$dir/tasks.md" || fail "done did not tick T1"
+# (Count CRs with tr: grep in Git Bash drops them before matching.)
+[ "$(tr -cd '\r' <"$dir/tasks.md" | wc -c | tr -d ' ')" = 4 ] || fail "done dropped the CR of a CRLF line"
 "$jsdd" claim 003 T2
 "$jsdd" done 003 T2 --manual "smoke looked"
 grep -q 'T2.*checked: smoke looked' "$dir/tasks.md" || fail "done --manual did not record the note"

@@ -779,7 +779,7 @@ cmd_init() {
     [ -n "$dry" ] || printf '%s\n' "$new" > "$settings"
   fi
 
-  if ! tr -d '\r' < "$ROOT/.gitignore" 2>/dev/null | grep -qxF .claude/settings.local.json; then
+  if ! { tr -d '\r' <"$ROOT/.gitignore"; } 2>/dev/null | grep -qxF .claude/settings.local.json; then
     echo "  ignore   .claude/settings.local.json (.gitignore)"
     [ -n "$dry" ] || printf '%s\n' .claude/settings.local.json >> "$ROOT/.gitignore"
   fi

@@ -1,8 +1,7 @@
 #!/usr/bin/env bash
 # SessionStart: print the spec board and the claims into context (stdout is added as context).
 # The session's own checkout: in a worktree, $CLAUDE_PROJECT_DIR is the main checkout.
-input=$(cat)
-. "$(dirname "$0")/_lib.sh"
+. "$(dirname "$0")/_lib.sh"   # reads the hook input
 cwd=$(json '.cwd // empty')
 root=$(git -C "${cwd:-.}" rev-parse --show-toplevel 2>/dev/null) || root="${CLAUDE_PROJECT_DIR:-.}"
 cd "$root" || exit 0

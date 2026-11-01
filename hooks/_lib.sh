@@ -4,7 +4,10 @@
 # the hook input use backslashes, and python3 may be missing or the Store stub,
 # so the helpers below even those out.
 
-# json <filter>: jq -r of the hook input in $input, without CRs. Empty if jq is missing.
+# The hook input (JSON on stdin).
+input=$(cat)
+
+# json <filter>: jq -r of the hook input, without CRs. Empty if jq is missing.
 json() { printf '%s' "$input" | jq -r "$1" 2>/dev/null | tr -d '\r'; }
 
 # posix_path <path>: C:\a\b as C:/a/b, which bash, git, and case patterns all handle.
