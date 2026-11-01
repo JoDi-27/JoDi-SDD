@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.5.0 (2026-11-01)
+
 Support for existing codebases (brownfield projects).
 
 - New `/jsdd:baseline <area>` and spec type `baseline`. A baseline records what one area of existing code does today: the new `sdd-surveyor` agent drafts its current behavior from the code and tests, you confirm what is intended, and the rows go into `docs/requirements.md`. The baseline spec's acceptance criteria are the existing tests. It has no plan or tasks, and `/jsdd:verify` closes it once every check passes. Create one with `jsdd new baseline "<title>"`.
