@@ -1,0 +1,786 @@
+#!/usr/bin/env bash
+# sdd: helper for the spec-driven development kit. See specs/README.md.
+# Plain bash 3.2 + awk, so it runs on a stock macOS or Linux laptop.
+set -euo pipefail
+
+# The plugin this script ships in, and the project it works on: $SDD_ROOT, else
+# the git checkout of the current directory, else the current directory.
+PLUGIN_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+TEMPLATES="$PLUGIN_DIR/templates"
+STARTERS="$PLUGIN_DIR/starters"
+ROOT="${SDD_ROOT:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}"
+SPECS_DIR="$ROOT/specs"
+STATUSES="draft approved planned in-progress done blocked dropped"
+
+# Claims: see "claims" below.
+if CLAIMS=$(cd "$ROOT" && git rev-parse --git-common-dir 2>/dev/null); then
+  CLAIMS="$(cd "$ROOT" && cd "$CLAIMS" && pwd)/sdd-claims"
+else
+  CLAIMS="$SPECS_DIR/.claims"
+fi
+ME="${CLAUDE_CODE_SESSION_ID:-${USER:-unknown}@$(hostname -s)}"
+STALE_HOURS="${SDD_STALE_HOURS:-8}"
+
+usage() {
+  cat <<EOF
+Usage: sdd <command>
+
+  init [--migrate] [--dry-run]  Set up this project for the kit: copy the starters
+                                where missing, refresh specs/README.md, and add the
+                                .gitignore lines; --migrate also removes a kit that
+                                install.sh copied into the project before the plugin
+
+  new <feature|spike> <title>   Create specs/NNN-slug/spec.md from a template
+  status [--write]              Print the progress board; --write also saves specs/STATUS.md
+  next                          List what can be worked on now, and the command to run
+
+  claim <ID>                    Claim a whole spec for this session (specify, plan, spike, verify)
+  claim <ID> next               Claim the next task that can start now; prints its ID
+  claim <ID> <Tn>               Claim one task
+  release <ID> [Tn] [--done] [--force]
+                                Release a claim; --done keeps a task claim as finished
+  done <ID> <Tn> [--manual <note>]
+                                Run the task's check; only if it passes, tick the task
+                                and mark its claim done. A manual check needs --manual
+  claims [--prune]              List claims; --prune drops the ones no longer needed
+
+  coverage [--phase N] [--priority M|S|C|W] [--missing] [ID or group ...]
+                                Requirements in docs/requirements.md and the specs whose
+                                refs cover them; --phase N scopes to the IDs and groups
+                                PLAN.md's Phase N names; --missing lists only uncovered ones
+
+Claims stop parallel sessions from picking the same work. They live in the git
+common dir, so every worktree on this machine shares them, and are never committed.
+The owner is \$CLAUDE_CODE_SESSION_ID, or user@host outside Claude Code.
+Claims older than \$SDD_STALE_HOURS (default 8) are shown as stale.
+EOF
+}
+
+# --- helpers ---------------------------------------------------------------
+
+slugify() {
+  printf '%s' "$1" | tr '[:upper:]' '[:lower:]' \
+    | sed -E 's/[^a-z0-9]+/-/g; s/^-+//; s/-+$//' | cut -c1-48 | sed -E 's/-+$//'
+}
+
+next_id() {
+  local max=0 n d
+  for d in "$SPECS_DIR"/[0-9][0-9][0-9]-*/; do
+    [ -d "$d" ] || continue
+    n=$(basename "$d" | cut -c1-3)
+    n=$((10#$n))
+    [ "$n" -gt "$max" ] && max=$n
+  done
+  # IDs reserved by other sessions or worktrees that are not visible here yet.
+  for d in "$CLAIMS"/id-[0-9][0-9][0-9]/; do
+    [ -d "$d" ] || continue
+    n=$(basename "$d" | cut -c4-6)
+    n=$((10#$n))
+    [ "$n" -gt "$max" ] && max=$n
+  done
+  printf '%03d' $((max + 1))
+}
+
+norm_id() {
+  case $1 in ""|*[!0-9]*) echo "invalid spec ID '$1'" >&2; exit 1 ;; esac
+  printf '%03d' $((10#$1))
+}
+
+norm_task() {
+  local t
+  t=$(printf '%s' "$1" | tr -d 'Tt')
+  case $t in ""|*[!0-9]*) echo "invalid task ID '$1'" >&2; exit 1 ;; esac
+  printf 'T%d' $((10#$t))
+}
+
+# spec_dir <ID>: the spec's folder.
+spec_dir() {
+  local d
+  for d in "$SPECS_DIR/$1"-*/; do
+    [ -d "$d" ] && { printf '%s' "${d%/}"; return; }
+  done
+  echo "no spec $1 in specs/" >&2
+  return 1
+}
+
+# fm <file> <key>: value of a key in the YAML frontmatter (flat keys only).
+fm() {
+  awk -v k="$2" '
+    NR == 1 { if ($0 != "---") exit; next }
+    $0 == "---" { exit }
+    {
+      i = index($0, ":")
+      if (i && substr($0, 1, i - 1) == k) {
+        v = substr($0, i + 1)
+        gsub(/^[ \t]+|[ \t]+$/, "", v); gsub(/^"|"$/, "", v)
+        print v; exit
+      }
+    }' "$1"
+}
+
+# uncomment <files...>: the lines with HTML comments removed.
+uncomment() {
+  awk '
+    { line = $0 }
+    incomment { if (index(line, "-->")) { line = substr(line, index(line, "-->") + 3); incomment = 0 } else next }
+    {
+      while (index(line, "<!--")) {
+        pre = substr(line, 1, index(line, "<!--") - 1); rest = substr(line, index(line, "<!--") + 4)
+        if (index(rest, "-->")) line = pre substr(rest, index(rest, "-->") + 3)
+        else { line = pre; incomment = 1 }
+      }
+      print line
+    }' "$@"
+}
+
+# count <regex> <files...>: matching lines outside HTML comments.
+count() {
+  local re=$1; shift
+  # The regex goes through the environment: awk -v would eat its backslashes.
+  uncomment "$@" | RE="$re" awk '$0 ~ ENVIRON["RE"] { n++ } END { print n + 0 }'
+}
+
+# records: one tab-separated line per spec:
+# id, type, status, phase, depends_on, done, total, open questions, title, dir,
+# spec claim ("-" if none), task note ("-" if none)
+records() {
+  local d spec id type status phase deps title progress done total open num sclaim tnote
+  for d in "$SPECS_DIR"/[0-9][0-9][0-9]-*/; do
+    [ -d "$d" ] || continue
+    d=${d%/}
+    spec="$d/spec.md"
+    [ -f "$spec" ] || { echo "warning: $(basename "$d") has no spec.md" >&2; continue; }
+    id=$(fm "$spec" id); type=$(fm "$spec" type); status=$(fm "$spec" status)
+    phase=$(fm "$spec" phase); deps=$(fm "$spec" depends_on); title=$(fm "$spec" title)
+    case " $STATUSES " in *" $status "*) ;; *) echo "warning: $id has unknown status '$status'" >&2 ;; esac
+    # Progress comes from tasks.md; a spike tracks the checkboxes in its spec.
+    progress="$spec"; [ -f "$d/tasks.md" ] && progress="$d/tasks.md"
+    done=$(count '^[[:space:]]*- \[[xX]\]' "$progress")
+    total=$(count '^[[:space:]]*- \[[ xX]\]' "$progress")
+    open=$(count '\[NEEDS CLARIFICATION' "$spec" $( [ -f "$d/plan.md" ] && echo "$d/plan.md" ))
+    deps=$(printf '%s' "$deps" | tr -d '[] ' )
+    num=$(basename "$d" | cut -c1-3); sclaim=-; tnote=-
+    [ -d "$CLAIMS/$num" ] && sclaim=$(claim_desc "$num")
+    case $status in planned|in-progress) [ -f "$d/tasks.md" ] && tnote=$(task_note "$num" "$d/tasks.md") ;; esac
+    printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+      "$id" "${type:--}" "${status:--}" "${phase:--}" "${deps:--}" "$done" "$total" "$open" "$title" "$(basename "$d")" \
+      "$sclaim" "${tnote:--}"
+  done
+}
+
+# --- claims ----------------------------------------------------------------
+# Parallel sessions claim work before starting it, so two never pick the same
+# spec or task. A claim is a directory made with mkdir, which is atomic:
+#   $CLAIMS/003/        the whole spec (specify, plan, spike, verify)
+#   $CLAIMS/003-T4/     one task (implement); a "done" file marks it finished,
+#                       for worktrees that do not see the tick in tasks.md yet
+#   $CLAIMS/id-004/     a spec ID reserved by "new"
+# Each claim holds an "owner" file with owner=, since= (epoch), at= (local time).
+
+# claim_get <claim> <key>
+claim_get() { sed -n "s/^$2=//p" "$CLAIMS/$1/owner" 2>/dev/null | head -1; }
+
+# claim_take <claim>: succeeds only if nobody holds it yet.
+claim_take() {
+  mkdir -p "$CLAIMS"
+  mkdir "$CLAIMS/$1" 2>/dev/null || return 1
+  printf 'owner=%s\nsince=%s\nat=%s\n' "$ME" "$(date +%s)" "$(date '+%Y-%m-%d %H:%M')" > "$CLAIMS/$1/owner"
+}
+
+mine() { [ "$(claim_get "$1" owner)" = "$ME" ]; }
+
+stale() {
+  local since
+  since=$(claim_get "$1" since)
+  [ -n "$since" ] && [ $(( $(date +%s) - since )) -gt $(( STALE_HOURS * 3600 )) ]
+}
+
+# claim_desc <claim>: "by <owner> since <time>", for messages.
+claim_desc() {
+  local o at
+  o=$(claim_get "$1" owner); at=$(claim_get "$1" at)
+  if [ "$o" = "$ME" ]; then o=you
+  elif [ -z "$o" ]; then o="another session"
+  else o=$(printf '%s' "$o" | cut -c1-8)
+  fi
+  printf 'by %s since %s' "$o" "${at:-just now}"
+  if stale "$1"; then printf ' (stale)'; fi
+  return 0
+}
+
+# task_rows <ID> <tasks.md>: one line per task: ID, ticked (0/1), [P] (0/1),
+# claim (free, mine, other, done).
+task_rows() {
+  local id=$1 t ticked par state
+  uncomment "$2" | awk '
+    match($0, /^[[:space:]]*- \[[ xX]\] \*\*T[0-9]+\*\*/) {
+      head = substr($0, RSTART, RLENGTH)
+      t = head; sub(/^.*\*\*T/, "T", t); sub(/\*\*$/, "", t)
+      print t, (head ~ /\[[xX]\]/ ? 1 : 0), (index(substr($0, RSTART + RLENGTH), "[P]") ? 1 : 0)
+    }' | while read -r t ticked par; do
+      state=free
+      if [ -d "$CLAIMS/$id-$t" ]; then
+        if [ -f "$CLAIMS/$id-$t/done" ]; then state=done
+        elif mine "$id-$t"; then state=mine
+        else state=other
+        fi
+      fi
+      echo "$t $ticked $par $state"
+    done
+}
+
+# pick_task <ID> <tasks.md>: the first task that can start now, or nothing.
+# A task can start once every task before it is finished (ticked or claimed done),
+# except the tasks in its own run of consecutive [P] tasks.
+pick_task() {
+  task_rows "$1" "$2" | awk '
+    {
+      fin = ($2 == 1 || $4 == "done")
+      if ($3 == 1 && !prevpar) rungate = pending
+      gate = ($3 == 1) ? rungate : pending
+      if (!fin && $4 == "free" && !gate) { print $1; exit }
+      if (!fin) pending = 1
+      prevpar = ($3 == 1)
+    }'
+}
+
+# task_note <ID> <tasks.md>: what "next" says about a spec's tasks.
+task_note() {
+  local free claimed
+  free=$(pick_task "$1" "$2")
+  claimed=$(task_rows "$1" "$2" | awk '$2 == 0 && ($4 == "mine" || $4 == "other") { printf "%s%s", sep, $1; sep = ", " }')
+  if [ -n "$free" ] && [ -n "$claimed" ]; then echo "$free free; $claimed claimed"
+  elif [ -n "$free" ]; then echo "$free free"
+  elif [ -n "$claimed" ]; then echo "no task free; $claimed claimed"
+  elif [ "$(task_rows "$1" "$2" | awk '$2 == 0 && $4 != "done"' | wc -l)" -eq 0 ]; then echo "all tasks done"
+  else echo "no task free"
+  fi
+}
+
+# others_tasks <ID>: unfinished task claims on a spec held by other sessions.
+others_tasks() {
+  local c name
+  for c in "$CLAIMS/$1"-T*/; do
+    [ -d "$c" ] || continue
+    name=$(basename "$c")
+    [ -f "$c/done" ] && continue
+    mine "$name" && continue
+    printf '  %s %s\n' "${name#*-}" "$(claim_desc "$name")"
+  done
+}
+
+claim_spec() {
+  local id=$1 busy
+  if [ -d "$CLAIMS/$id" ] && mine "$id"; then echo "$id already claimed by you"; return; fi
+  busy=$(others_tasks "$id")
+  if [ -n "$busy" ]; then
+    printf '%s has tasks claimed by other sessions:\n%s\n' "$id" "$busy" >&2; exit 1
+  fi
+  if ! claim_take "$id"; then
+    echo "$id is claimed $(claim_desc "$id")" >&2; exit 1
+  fi
+  echo "claimed $id"
+}
+
+claim_task() {
+  local id=$1 f="$2/tasks.md" t row ticked state
+  [ -f "$f" ] || { echo "$id has no tasks.md" >&2; exit 1; }
+  if [ -d "$CLAIMS/$id" ] && ! mine "$id"; then
+    echo "$id is claimed $(claim_desc "$id")" >&2; exit 1
+  fi
+  if [ "$3" = next ]; then
+    # Resume a task this session already holds.
+    t=$(task_rows "$id" "$f" | awk '$2 == 0 && $4 == "mine" { print $1; exit }')
+    if [ -n "$t" ]; then echo "$t"; echo "($id $t is already claimed by you)" >&2; return; fi
+    # If another session takes the pick first, mkdir fails and the next pick skips it.
+    while t=$(pick_task "$id" "$f") && [ -n "$t" ]; do
+      if claim_take "$id-$t"; then echo "$t"; return; fi
+    done
+    if [ "$(task_note "$id" "$f")" = "all tasks done" ]; then
+      echo "every task of $id is ticked or done; next: /sdd:verify $id" >&2; exit 1
+    fi
+    echo "no task of $id can start now:" >&2
+    task_rows "$id" "$f" | while read -r t ticked _ state; do
+      [ "$ticked" = 1 ] && continue
+      case $state in
+        mine|other) echo "  $t claimed $(claim_desc "$id-$t")" >&2 ;;
+        free) echo "  $t waits on the tasks before it" >&2 ;;
+      esac
+    done
+    exit 1
+  fi
+  t=$(norm_task "$3")
+  row=$(task_rows "$id" "$f" | awk -v t="$t" '$1 == t')
+  [ -n "$row" ] || { echo "$id has no task $t" >&2; exit 1; }
+  read -r _ ticked _ state <<EOF
+$row
+EOF
+  [ "$ticked" = 1 ] && { echo "$id $t is already ticked" >&2; exit 1; }
+  case $state in
+    mine) echo "$t"; echo "($id $t is already claimed by you)" >&2; return ;;
+    done) echo "$id $t is already done (claim marked done)" >&2; exit 1 ;;
+    other) echo "$id $t is claimed $(claim_desc "$id-$t")" >&2; exit 1 ;;
+  esac
+  claim_take "$id-$t" || { echo "$id $t is claimed $(claim_desc "$id-$t")" >&2; exit 1; }
+  echo "$t"
+}
+
+# --- commands --------------------------------------------------------------
+
+cmd_new() {
+  [ $# -ge 2 ] || { usage >&2; exit 1; }
+  local type=$1; shift
+  local title="$*" tpl id slug dir today esc
+  case $type in
+    feature) tpl=spec.md ;;
+    spike) tpl=spike.md ;;
+    *) echo "unknown type '$type' (use feature or spike)" >&2; exit 1 ;;
+  esac
+  # Reserve the ID, so sessions in other worktrees do not take it too.
+  id=$(next_id)
+  until claim_take "id-$id"; do id=$(next_id); done
+  slug=$(slugify "$title"); dir="$SPECS_DIR/$id-$slug"; today=$(date +%Y-%m-%d)
+  esc=$(printf '%s' "$title" | sed -e 's/[\/&|]/\\&/g')
+  mkdir "$dir"
+  sed -e "s|{{ID}}|$id|g" -e "s|{{TITLE}}|$esc|g" -e "s|{{DATE}}|$today|g" "$TEMPLATES/$tpl" > "$dir/spec.md"
+  echo "${dir#"$ROOT"/}/spec.md"
+}
+
+board() {
+  records | sort | awk -F '\t' '
+    BEGIN {
+      print "| ID | Type | Status | Phase | Progress | Open Qs | Depends on | Title |"
+      print "| --- | --- | --- | --- | --- | --- | --- | --- |"
+    }
+    {
+      prog = ($7 > 0) ? $6 "/" $7 : "-"
+      printf "| %s | %s | %s | %s | %s | %s | %s | [%s](%s/) |\n", $1, $2, $3, $4, prog, ($8 > 0 ? $8 : ""), ($5 == "-" ? "" : $5), $9, $10
+      n[$3]++; total++
+    }
+    END {
+      if (!total) { print "| | | | | | | | No specs yet |" ; exit }
+      printf "\n%d specs:", total
+      split("draft approved planned in-progress done blocked dropped", order, " ")
+      for (i = 1; i <= 7; i++) if (n[order[i]]) printf " %s %d,", order[i], n[order[i]]
+      print ""
+    }' | sed -e '$ s/,$//'
+}
+
+# next: specs that are not finished and whose dependencies are all done.
+next_up() {
+  records | sort | awk -F '\t' '
+    { id[NR] = $1; st[$1] = $3; deps[$1] = $5; title[$1] = $9; open[$1] = $8; type[$1] = $2; sclaim[$1] = $11; tnote[$1] = $12 }
+    END {
+      rank["in-progress"] = 1; rank["planned"] = 2; rank["approved"] = 3; rank["draft"] = 4
+      for (r = 1; r <= 4; r++) for (i = 1; i <= NR; i++) {
+        k = id[i]; if (rank[st[k]] != r) continue
+        waiting = ""
+        if (deps[k] != "-") { m = split(deps[k], d, ","); for (j = 1; j <= m; j++) if (st[d[j]] != "done") waiting = waiting " " d[j] }
+        if (waiting != "") { blockedby[k] = waiting; continue }
+        if (sclaim[k] != "-") {
+          hint = "claimed " sclaim[k]
+          if (type[k] == "spike") hint = hint "; add notes to its Inbox"
+        }
+        else if (type[k] == "spike") hint = "/sdd:spike " k
+        else if (tnote[k] == "all tasks done") hint = "/sdd:verify " k
+        else if (tnote[k] ~ /^no task free/) hint = tnote[k]
+        else if (st[k] == "in-progress" || st[k] == "planned") hint = "/sdd:implement " k (tnote[k] != "-" ? "   (" tnote[k] ")" : "")
+        else if (open[k] > 0) hint = "/sdd:specify " k "   (" open[k] " open questions)"
+        else if (st[k] == "approved") hint = "/sdd:plan " k
+        else hint = "review spec, then /sdd:plan " k
+        printf "  %-4s %-11s %-60s %s\n", k, st[k], substr(title[k], 1, 60), hint; shown++
+      }
+      if (!shown) print "  (nothing actionable; create a spec with /sdd:specify)"
+      for (i = 1; i <= NR; i++) {
+        k = id[i]
+        if (k in blockedby) printf "  %-4s waiting on%s\n", k, blockedby[k]
+        else if (st[k] == "blocked") printf "  %-4s blocked (see spec)\n", k
+      }
+    }'
+}
+
+cmd_claim() {
+  [ $# -ge 1 ] || { usage >&2; exit 1; }
+  local id dir
+  id=$(norm_id "$1"); dir=$(spec_dir "$id")
+  if [ $# -eq 1 ]; then claim_spec "$id"; else claim_task "$id" "$dir" "$2"; fi
+}
+
+cmd_release() {
+  [ $# -ge 1 ] || { usage >&2; exit 1; }
+  local id name a t="" done=0 force=0
+  id=$(norm_id "$1"); shift
+  for a in "$@"; do
+    case $a in
+      --done) done=1 ;;
+      --force) force=1 ;;
+      *) t=$(norm_task "$a") ;;
+    esac
+  done
+  name=$id; [ -n "$t" ] && name="$id-$t"
+  [ -d "$CLAIMS/$name" ] || { echo "no claim on $id $t"; return; }
+  if [ $force = 0 ] && ! mine "$name"; then
+    echo "$id $t is claimed $(claim_desc "$name"); use --force if that session is gone" >&2; exit 1
+  fi
+  if [ $done = 1 ]; then
+    [ -n "$t" ] || { echo "--done is for task claims" >&2; exit 1; }
+    touch "$CLAIMS/$name/done"; echo "marked $id $t done"
+  else
+    rm -rf "$CLAIMS/${name:?}"; echo "released $id $t"
+  fi
+}
+
+# task_line <tasks.md> <Tn>: "<line number><TAB><line>" of the task, outside
+# HTML comments, or nothing.
+task_line() {
+  awk -v t="$2" '
+    incomment { if (index($0, "-->")) incomment = 0; next }
+    {
+      line = $0
+      while (index(line, "<!--")) {
+        rest = substr(line, index(line, "<!--") + 4)
+        if (index(rest, "-->")) line = substr(line, 1, index(line, "<!--") - 1) substr(rest, index(rest, "-->") + 3)
+        else { line = substr(line, 1, index(line, "<!--") - 1); incomment = 1 }
+      }
+      if (line ~ ("^[[:space:]]*- \\[[ xX]\\] \\*\\*" t "\\*\\*")) { print NR "\t" $0; exit }
+    }' "$1"
+}
+
+# check_of <task line>: the command in backticks after "check:", or nothing.
+# "check: manual: ..." has no backticks, so it gives nothing.
+check_of() {
+  printf '%s\n' "$1" | awk '{
+    i = index($0, "check:"); if (!i) exit
+    rest = substr($0, i + 6)
+    if (rest ~ /^[[:space:]]*manual:/) exit
+    if (match(rest, /`[^`]+`/)) print substr(rest, RSTART + 1, RLENGTH - 2)
+  }'
+}
+
+# done: the only way a task gets ticked. Runs the task's check from the
+# repository root and ticks the task only when the check exits 0.
+cmd_done() {
+  [ $# -ge 2 ] || { usage >&2; exit 1; }
+  local id dir f t row tab n line cmd note="" rc tmp
+  id=$(norm_id "$1"); t=$(norm_task "$2"); shift 2
+  if [ "${1:-}" = --manual ]; then
+    note="${2:-}"
+    [ -n "$note" ] || { echo "--manual needs a note: who checked what" >&2; exit 1; }
+  elif [ $# -gt 0 ]; then
+    echo "unknown option '$1'" >&2; exit 1
+  fi
+  dir=$(spec_dir "$id"); f="$dir/tasks.md"
+  [ -f "$f" ] || { echo "$id has no tasks.md" >&2; exit 1; }
+  [ -d "$CLAIMS/$id-$t" ] && mine "$id-$t" \
+    || { echo "claim $id $t first: sdd claim $id $t" >&2; exit 1; }
+  row=$(task_line "$f" "$t")
+  [ -n "$row" ] || { echo "$id has no task $t" >&2; exit 1; }
+  tab=$'\t'; n=${row%%"$tab"*}; line=${row#*"$tab"}
+  case $line in *"- [x]"*|*"- [X]"*) echo "$id $t is already ticked" >&2; exit 1 ;; esac
+  cmd=$(check_of "$line")
+
+  if [ -n "$cmd" ]; then
+    [ -z "$note" ] || { echo "$id $t has a check command; --manual is only for manual checks" >&2; exit 1; }
+    echo "check: $cmd"
+    rc=0; (cd "$ROOT" && bash -c "$cmd") || rc=$?
+    if [ $rc -ne 0 ]; then
+      echo "check failed (exit $rc); $id $t not ticked" >&2; exit 1
+    fi
+  elif [ -z "$note" ]; then
+    echo "$id $t has no check command in backticks after 'check:'." >&2
+    echo "For a manual check, run: sdd done $id $t --manual \"<who checked what>\"" >&2
+    exit 1
+  fi
+
+  # Tick only that line; a manual check keeps its note on the task.
+  tmp="$f.tmp.$$"
+  NOTE="$note" DATE="$(date +%F)" awk -v n="$n" '
+    NR == n {
+      sub(/- \[ \]/, "- [x]")
+      if (ENVIRON["NOTE"] != "") $0 = $0 " · checked: " ENVIRON["NOTE"] " (" ENVIRON["DATE"] ")"
+    }
+    { print }' "$f" > "$tmp" && mv "$tmp" "$f"
+  touch "$CLAIMS/$id-$t/done"
+  if [ -n "$cmd" ]; then echo "check passed; ticked $id $t"; else echo "ticked $id $t (manual check recorded)"; fi
+}
+
+# list_claims [all]: active claims, or with "all" also done markers.
+list_claims() {
+  local c name
+  for c in "$CLAIMS"/[0-9]*/; do
+    [ -d "$c" ] || continue
+    name=$(basename "$c")
+    if [ -f "$c/done" ]; then
+      [ "${1:-}" = all ] || continue
+      printf '  %-8s done     %s\n' "${name/-/ }" "$(claim_desc "$name")"
+    else
+      printf '  %-8s claimed  %s\n' "${name/-/ }" "$(claim_desc "$name")"
+    fi
+  done
+}
+
+# on_main <ID>: the spec's folder is on the main branch (local or origin), so
+# every worktree sees it once it syncs. Set $SDD_MAIN_BRANCH if it is not main.
+on_main() {
+  local b="${SDD_MAIN_BRANCH:-main}" ref
+  for ref in "$b" "origin/$b"; do
+    (cd "$SPECS_DIR" && git ls-tree --name-only "$ref" -- . 2>/dev/null) \
+      | grep -q "^$1-" && return 0
+  done
+  return 1
+}
+
+# prune: drop claims whose spec is done or dropped, done markers whose task is
+# ticked here, and ID reservations whose spec is on main. A spec made in
+# another worktree lives only on that branch until it is merged, so a claim or
+# reservation whose spec is not visible here is kept: it may be live.
+# Abandoned claims show as stale instead; release them with --force.
+prune_claims() {
+  local c name id dir status t
+  for c in "$CLAIMS"/*/; do
+    [ -d "$c" ] || continue
+    c=${c%/}; name=$(basename "$c")
+    case $name in
+      id-*) on_main "${name#id-}" && rm -rf "$c"; continue ;;
+    esac
+    id=${name%%-*}
+    dir=$(spec_dir "$id" 2>/dev/null) || continue
+    status=$(fm "$dir/spec.md" status)
+    case $status in done|dropped) rm -rf "$c"; continue ;; esac
+    case $name in *-T*) ;; *) continue ;; esac
+    [ -f "$c/done" ] && [ -f "$dir/tasks.md" ] || continue
+    t=${name#*-}
+    [ "$(task_rows "$id" "$dir/tasks.md" | awk -v t="$t" '$1 == t { print $2 }')" = 1 ] && rm -rf "$c"
+  done
+  return 0
+}
+
+cmd_claims() {
+  local out
+  [ "${1:-}" = --prune ] && prune_claims
+  out=$(list_claims all)
+  printf '%s\n' "${out:-  (no claims)}"
+}
+
+# --- requirement coverage -------------------------------------------------
+# Requirement rows are the table rows of $REQUIREMENTS whose first cell is an
+# ID like FR-AUTH-05 or NFR-SEC-03. A row with four cells (ID, text, source,
+# priority) has a priority; NFR rows have none. A spec covers a requirement
+# when its `refs` name the requirement's ID.
+
+REQUIREMENTS="${SDD_REQUIREMENTS:-$ROOT/docs/requirements.md}"
+PLAN_FILE="$ROOT/PLAN.md"
+REQ_ID_RE='(FR|NFR)-[A-Z0-9]+(-[0-9]+[a-z]?)?'
+
+# spec_refs: one line per spec: id, status, requirement IDs in its refs (space separated).
+spec_refs() {
+  local d spec ids
+  for d in "$SPECS_DIR"/[0-9][0-9][0-9]-*/; do
+    spec="${d%/}/spec.md"
+    [ -f "$spec" ] || continue
+    ids=$(fm "$spec" refs | grep -oE "$REQ_ID_RE" | tr '\n' ' ' || true)
+    printf '%s\t%s\t%s\n' "$(fm "$spec" id)" "$(fm "$spec" status)" "$ids"
+  done
+}
+
+# phase_scope <N>: the requirement IDs and groups that PLAN.md's "## Phase N" section names.
+phase_scope() {
+  [ -f "$PLAN_FILE" ] || { echo "no PLAN.md for --phase" >&2; exit 1; }
+  awk -v p="$1" '
+    /^## / { on = (index($0, "## Phase " p ":") == 1 || $0 == "## Phase " p) ; next }
+    on' "$PLAN_FILE" | grep -oE "$REQ_ID_RE" | sort -u | tr '\n' ' '
+}
+
+# coverage_rows: id, priority, specs ("007:done,009:draft" or "-"), state, text.
+# state: done (a done spec covers it), spec (a live spec covers it), none.
+coverage_rows() {
+  [ -f "$REQUIREMENTS" ] || { echo "no requirements file at $REQUIREMENTS (set SDD_REQUIREMENTS)" >&2; exit 1; }
+  spec_refs | SCOPE="${1:-}" awk -F '\t' '
+    FILENAME == "-" {
+      n = split($3, ids, " ")
+      for (i = 1; i <= n; i++) if ($2 != "dropped") {
+        specs[ids[i]] = specs[ids[i]] (specs[ids[i]] ? "," : "") $1 ":" $2
+        if ($2 == "done") done[ids[i]] = 1
+      }
+      next
+    }
+    /^\| *N?FR-[A-Z0-9]+-[0-9]+[a-z]? *\|/ {
+      nf = split($0, c, "|")
+      id = c[2]; gsub(/^ +| +$/, "", id)
+      if (ENVIRON["SCOPE"] != "" && !inscope(id)) next
+      text = c[3]; gsub(/\*\*/, "", text); gsub(/^ +| +$/, "", text)
+      pri = "-"
+      if (nf == 6) { pri = c[5]; gsub(/ /, "", pri); if (pri !~ /^[MSCW]$/) pri = "-" }
+      state = (id in done) ? "done" : ((id in specs) ? "spec" : "none")
+      printf "%s\t%s\t%s\t%s\t%s\n", id, pri, (id in specs ? specs[id] : "-"), state, text
+    }
+    # A scope entry is an exact ID or a group prefix such as FR-SES.
+    function inscope(id,   n, s, i) {
+      n = split(ENVIRON["SCOPE"], s, " ")
+      for (i = 1; i <= n; i++) if (id == s[i] || index(id, s[i] "-") == 1) return 1
+      return 0
+    }' - "$REQUIREMENTS"
+}
+
+# coverage_summary <rows>: one line per priority: covered by a spec, and done.
+coverage_summary() {
+  awk -F '\t' '
+    { t[$2]++; if ($4 != "none") s[$2]++; if ($4 == "done") d[$2]++ }
+    END {
+      split("M S C W -", order, " "); name["M"] = "Must"; name["S"] = "Should"; name["C"] = "Could"; name["W"] = "Won'"'"'t"; name["-"] = "No priority (NFRs)"
+      for (i = 1; i <= 5; i++) { p = order[i]; if (t[p]) printf "  %-19s %3d   with a spec %3d   done %3d\n", name[p], t[p], s[p] + 0, d[p] + 0 }
+    }'
+}
+
+cmd_coverage() {
+  local scope="" pri="" missing="" rows
+  while [ $# -gt 0 ]; do
+    case $1 in
+      --phase) [ $# -ge 2 ] || { usage >&2; exit 1; }; scope="$scope $(phase_scope "$2")"; shift 2 ;;
+      --priority) [ $# -ge 2 ] || { usage >&2; exit 1; }; pri=$2; shift 2 ;;
+      --missing) missing=1; shift ;;
+      -*) echo "unknown option '$1'" >&2; usage >&2; exit 1 ;;
+      *) scope="$scope $1"; shift ;;
+    esac
+  done
+  rows=$(coverage_rows "${scope# }")
+  [ -n "$rows" ] || { echo "no requirements in scope"; return; }
+  printf '%s\n' "$rows" | coverage_summary
+  echo
+  printf '%s\n' "$rows" | PRI="$pri" MISSING="$missing" awk -F '\t' '
+    ENVIRON["PRI"] != "" && $2 != ENVIRON["PRI"] { next }
+    ENVIRON["MISSING"] != "" && $4 != "none" { next }
+    {
+      if (!shown++) { print "| Requirement | Pri | Specs | Text |"; print "| --- | --- | --- | --- |" }
+      t = $5; if (length(t) > 70) t = substr(t, 1, 67) "..."
+      printf "| %s | %s | %s | %s |\n", $1, $2, ($3 == "-" ? "" : $3), t
+    }
+    END { if (!shown) print "  (no requirements match)" }'
+}
+
+cmd_status() {
+  local out claims
+  out=$(board)
+  printf '%s\n\nNext up:\n%s\n' "$out" "$(next_up)"
+  claims=$(list_claims)
+  [ -z "$claims" ] || printf '\nClaims:\n%s\n' "$claims"
+  if [ -f "$REQUIREMENTS" ]; then
+    out="$out
+
+Requirement coverage (\`sdd coverage\`):
+
+\`\`\`
+$(coverage_rows | coverage_summary)
+\`\`\`"
+    printf '\nRequirement coverage:\n%s\n' "$(coverage_rows | coverage_summary)"
+  fi
+  if [ "${1:-}" = "--write" ]; then
+    {
+      echo "# Status"
+      echo
+      echo "Generated by \`sdd status --write\`. Do not edit by hand."
+      echo
+      printf '%s\n' "$out"
+    } > "$SPECS_DIR/STATUS.md"
+    echo; echo "Wrote specs/STATUS.md"
+  fi
+}
+
+# --- init ------------------------------------------------------------------
+# Starters are the project's once copied, so init never overwrites them;
+# specs/README.md describes the kit, so it is refreshed. --migrate removes what
+# install.sh used to copy into the project, which the plugin replaces.
+
+OLD_KIT=".claude/skills/sdd-implement .claude/skills/sdd-plan .claude/skills/sdd-specify
+.claude/skills/sdd-spike .claude/skills/sdd-status .claude/skills/sdd-verify
+.claude/agents/sdd-reviewer.md .claude/agents/spike-researcher.md
+.claude/hooks/session-start.sh .claude/hooks/pre-commit-message.sh
+.claude/hooks/post-edit-status.sh .claude/hooks/stop-claims.sh specs/_kit"
+OLD_HOOKS='\.claude/hooks/(session-start|pre-commit-message|post-edit-status|stop-claims)\.sh'
+ALLOW='Bash(sdd *)'
+
+cmd_init() {
+  local migrate="" dry="" a f old="" settings="$ROOT/.claude/settings.json" json new
+  for a in "$@"; do
+    case $a in
+      --migrate) migrate=1 ;;
+      --dry-run) dry=1 ;;
+      *) echo "unknown option '$a'" >&2; usage >&2; exit 1 ;;
+    esac
+  done
+  run() { [ -n "$dry" ] || "$@"; }
+
+  for f in $OLD_KIT; do [ -e "$ROOT/$f" ] && old="$old $f"; done
+  if [ -n "$old" ] && [ -z "$migrate" ]; then
+    echo "This project has the kit that install.sh copied in. With the plugin as well," >&2
+    echo "every hook would run twice. Run 'sdd init --migrate' to remove the old copy." >&2
+    exit 1
+  fi
+
+  echo "Starters:"
+  (cd "$STARTERS" && find . -type f ! -name .DS_Store | sed 's|^\./||' | sort) | while IFS= read -r f; do
+    if [ ! -e "$ROOT/$f" ]; then
+      echo "  add      $f"; run mkdir -p "$(dirname "$ROOT/$f")"; run cp "$STARTERS/$f" "$ROOT/$f"
+    elif [ "$f" = specs/README.md ] && ! cmp -s "$STARTERS/$f" "$ROOT/$f"; then
+      echo "  update   $f"; run cp "$STARTERS/$f" "$ROOT/$f"
+    fi
+  done
+
+  if [ -n "$old" ]; then
+    echo "Old kit (from install.sh):"
+    for f in $old; do echo "  remove   $f"; run rm -rf "${ROOT:?}/$f"; done
+    for f in skills agents hooks; do run rmdir "$ROOT/.claude/$f" 2>/dev/null || true; done
+  fi
+
+  # Settings: drop the old kit's hooks and permission, allow sdd without a prompt.
+  json='{}'; [ -f "$settings" ] && json=$(jq . "$settings")
+  new=$(printf '%s' "$json" | jq --arg re "$OLD_HOOKS" --arg allow "$ALLOW" '
+    if .hooks then
+      .hooks |= (with_entries(.value |= (map(.hooks |= map(select((.command // "") | test($re) | not)))
+                                         | map(select(.hooks | length > 0))))
+                 | with_entries(select(.value | length > 0)))
+      | if .hooks == {} then del(.hooks) else . end
+    else . end
+    | .permissions.allow |= ((. // []) | map(select(. != "Bash(specs/_kit/sdd *)"))
+                             | if any(.[]; . == $allow) then . else . + [$allow] end)')
+  if [ "$new" != "$json" ]; then
+    echo "Settings:"
+    echo "  update   .claude/settings.json (allow $ALLOW${old:+; remove the old hooks})"
+    run mkdir -p "$ROOT/.claude"
+    [ -n "$dry" ] || printf '%s\n' "$new" > "$settings"
+  fi
+
+  if ! grep -qxF .claude/settings.local.json "$ROOT/.gitignore" 2>/dev/null; then
+    echo "  ignore   .claude/settings.local.json (.gitignore)"
+    [ -n "$dry" ] || printf '%s\n' .claude/settings.local.json >> "$ROOT/.gitignore"
+  fi
+
+  echo
+  if [ -n "$dry" ]; then echo "Dry run: nothing changed."; return; fi
+  [ -z "$old" ] || echo "The removed files are still in git history. Move any project tweaks (test command, architecture rules) into specs/constitution.md, under Project specifics."
+  if grep -q 'FR-AUTH-01 | <one behavior>' "$ROOT/docs/requirements.md" 2>/dev/null; then
+    printf '%s\n' "Next steps:" \
+      "  1. Fill in docs/intent.md, then the product articles and Project specifics in specs/constitution.md." \
+      "  2. List requirements in docs/requirements.md, and phases in PLAN.md tagged with their IDs." \
+      "  3. Run /sdd:status."
+  fi
+}
+
+case "${1:-}" in
+  init|-h|--help|help|"") ;;
+  *) [ -d "$SPECS_DIR" ] || { echo "no specs/ folder in $ROOT: run 'sdd init' first" >&2; exit 1; } ;;
+esac
+
+case "${1:-}" in
+  init) shift; cmd_init "$@" ;;
+  new) shift; cmd_new "$@" ;;
+  status) shift; cmd_status "$@" ;;
+  next) next_up ;;
+  claim) shift; cmd_claim "$@" ;;
+  release) shift; cmd_release "$@" ;;
+  done) shift; cmd_done "$@" ;;
+  claims) shift; cmd_claims "$@" ;;
+  coverage) shift; cmd_coverage "$@" ;;
+  -h|--help|help|"") usage ;;
+  *) echo "unknown command '$1'" >&2; usage >&2; exit 1 ;;
+esac

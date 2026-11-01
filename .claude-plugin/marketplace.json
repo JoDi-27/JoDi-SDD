@@ -1,0 +1,11 @@
+{
+  "name": "sdd-kit",
+  "owner": { "name": "JoDi27" },
+  "plugins": [
+    {
+      "name": "sdd",
+      "source": "./",
+      "description": "Spec-driven development: specs, plans, tasks, spikes, and verification, tracked in specs/."
+    }
+  ]
+}

@@ -4,7 +4,7 @@ Phased plan toward the first version described in [docs/intent.md](docs/intent.m
 
 Each checklist item is delivered through one or more specs in `specs/` (see [specs/README.md](specs/README.md)); `specs/STATUS.md` shows progress. A spec's `refs` quote the item it delivers and the requirement IDs from [docs/requirements.md](docs/requirements.md) it covers.
 
-Items end with the requirements they cover after a `·`: a group such as `FR-AUTH` means every requirement in it, and a full ID means only that one. `specs/_kit/sdd coverage --phase 1 --priority M --missing` lists the Phase 1 Musts that still need a spec.
+Items end with the requirements they cover after a `·`: a group such as `FR-AUTH` means every requirement in it, and a full ID means only that one. `sdd coverage --phase 1 --priority M --missing` lists the Phase 1 Musts that still need a spec.
 
 | Phase | Goal | Status |
 | --- | --- | --- |
@@ -16,13 +16,13 @@ Items end with the requirements they cover after a `·`: a group such as `FR-AUT
 
 ### Spikes
 
-Each is a spike spec run with `/sdd-spike`; their goal questions are in `BACKLOG.md` "Spikes".
+Each is a spike spec run with `/sdd:spike`; their goal questions are in `BACKLOG.md` "Spikes".
 
 - [ ] **<spike name>**
 
 ### Foundations
 
-Each item becomes a feature spec (`/sdd-specify`), split if it takes more than a few days.
+Each item becomes a feature spec (`/sdd:specify`), split if it takes more than a few days.
 
 - [ ] Repository layout, build, and test command. · NFR-XXX-01
 

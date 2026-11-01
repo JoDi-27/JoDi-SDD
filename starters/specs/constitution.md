@@ -18,6 +18,16 @@ Example: - **P1 Tenants are isolated.** Every record belongs to one tenant, and 
 5. **Decisions are written down.** Every choice between real alternatives gets a row in the plan's Decisions table (or a spike's Recommendation). Choices that settle a backlog item or an open decision in `docs/decisions.md` also update it in place.
 6. **Verify current docs.** Before using a library, SDK, or tool API, check its current documentation rather than relying on memory, and note the version in the plan.
 
+## Project specifics
+
+What the kit's skills and the reviewer need to know about this project.
+
+- **Test command:** `make test` <!-- the command that runs the whole suite; plans use it in task checks -->
+
+### Architecture checklist
+
+<!-- Rules the sdd-reviewer agent checks every plan and change against, as the design settles (layering, ports and adapters, tenancy, and so on). Keep each rule checkable from the code. -->
+
 ## Amendments
 
 | Date | Article | Change | Why |
