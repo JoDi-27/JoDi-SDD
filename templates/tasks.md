@@ -16,11 +16,6 @@ Rules:
 
 - [ ] **T1** <imperative description> · `path/or/module` · check: `<command>` → AC-1
 
-## Verification
-
-- [ ] **V1** Every acceptance criterion verified, with evidence below
-- [ ] **V2** PLAN.md and BACKLOG.md updated for this spec
-
 ## Evidence
 
 | Acceptance criterion | Result | Evidence (test, command output, manual check) |
