@@ -4,6 +4,10 @@
 
 - `/jsdd:init` finds what a project already wrote down under other names. `jsdd init` lists Markdown files at the top level and in `docs/` whose names suggest a starter (`VISION.md`, `docs/PRD.md`, `docs/adr/`, and the install.sh kit's `PRODUCT_INTENT.md`) as `source`, for starters that are missing or still blank. The skill reads those, the README, and the other top-level docs, proposes which starter each one feeds, and after you confirm, moves whole files to `docs/legacy/` and folds their content in. It then offers to update references to the moved files.
 
+## 0.5.1 (2026-11-01)
+
+- The README covers updating and uninstalling the plugin, and shows CI, release, and license badges.
+
 ## 0.5.0 (2026-11-01)
 
 Support for existing codebases (brownfield projects).

@@ -3,6 +3,10 @@
   <img src=".github/assets/banner-light.svg" alt="JoDi-SDD: Spec-driven development for Claude Code, as a plugin." width="100%">
 </picture>
 
+[![CI](https://github.com/JoDi-27/JoDi-SDD/actions/workflows/ci.yml/badge.svg)](https://github.com/JoDi-27/JoDi-SDD/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/JoDi-27/JoDi-SDD)](https://github.com/JoDi-27/JoDi-SDD/releases/latest)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
+
 # JoDi-SDD
 
 Spec-driven development for [Claude Code](https://claude.com/claude-code), as a plugin.
@@ -51,6 +55,24 @@ claude plugin install jsdd@jodi-sdd --scope project
 ```
 
 Project scope records the plugin in the project's `.claude/settings.json`, so teammates who clone the project are offered it too. Use `--scope user` to install it for all your projects instead. The plugin stays inactive in any project that hasn't run `/jsdd:init`.
+
+## Update and uninstall
+
+To update to the latest release:
+
+```sh
+claude plugin update jsdd@jodi-sdd
+```
+
+Then start a new session, and run `/jsdd:init` again to pick up any changes to `specs/README.md`. It leaves your other files as they are. [CHANGELOG.md](CHANGELOG.md) lists what changed in each release, including behavior changes.
+
+To uninstall, use the scope you installed with (the default is `user`):
+
+```sh
+claude plugin uninstall jsdd@jodi-sdd --scope project
+```
+
+Your specs, docs, `PLAN.md`, and `BACKLOG.md` stay in the repository as plain Markdown. Delete them yourself if you no longer want them. Claims are kept in `.git/sdd-claims` (or `specs/.claims` outside git); you can delete that too.
 
 ## Quick start
 
