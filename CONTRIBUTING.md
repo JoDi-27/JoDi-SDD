@@ -1,0 +1,40 @@
+# Contributing
+
+Issues and pull requests are welcome. For anything bigger than a fix, open an issue first so we can agree on the shape.
+
+## Trying changes
+
+You don't need to install the plugin to test it. Run Claude Code in a test project with the plugin loaded from your checkout:
+
+```sh
+claude --plugin-dir path/to/jodi-sdd
+```
+
+Check the manifests with `claude plugin validate .`.
+
+To release, bump `version` in `.claude-plugin/plugin.json` and add an entry to [CHANGELOG.md](CHANGELOG.md). Projects pick up the new version with `claude plugin update jsdd@jodi-sdd`.
+
+## Layout
+
+| Path | What |
+| --- | --- |
+| `skills/<name>/SKILL.md` | One skill each, run as `/jsdd:<name>` |
+| `agents/` | `sdd-reviewer` and `spike-researcher` |
+| `hooks/` | Session-start board, `STATUS.md` regeneration, commit-message check, unreleased-claims warning. Registered in `hooks/hooks.json` |
+| `bin/jsdd` | The CLI (bash 3.2 and awk). It works on the git checkout of the current directory, or `$SDD_ROOT` |
+| `templates/` | `spec.md`, `spike.md`, `plan.md`, `tasks.md` |
+| `starters/` | What `jsdd init` copies into a project |
+| `.claude-plugin/` | `plugin.json`, and `marketplace.json` that makes this repository its own marketplace |
+
+## Adding a flow
+
+1. **Skill:** `skills/<flow>/SKILL.md` with `name`, `description` (when to use it; Claude reads it to decide), and `argument-hint` in the frontmatter. Write it as numbered steps, with a gate at the start (what must be true to begin) and a report at the end (what was done, and the next command). `skills/plan` shows the shape. `${CLAUDE_PLUGIN_ROOT}` in the body becomes the plugin's path.
+2. **Agent** (optional, for a fresh-context or read-only helper): `agents/<name>.md` with `name`, `description`, `tools`, and a fixed output format the calling skill can use.
+3. **Hook** (optional, for something that must happen every time): a script in `hooks/` whose line 2 is `# <Event> on <matcher>: <what it does>`, registered in `hooks/hooks.json`. Hooks read JSON on stdin, must work without git, and exit quietly in a project without `specs/constitution.md`.
+4. **State** goes in files in the project, never only in the conversation. If the flow touches specs, it uses the `jsdd` CLI rather than editing status or checkboxes by hand, and adds a subcommand when it needs one.
+5. **Docs:** describe it in `starters/specs/README.md` and add it to the commands table in `README.md`.
+
+## Conventions
+
+- `bin/jsdd` stays portable: bash 3.2 (stock macOS) and POSIX awk, no GNU-only flags.
+- Commit messages in this repository start with `[meta]`.
