@@ -20,7 +20,7 @@ Arguments: $ARGUMENTS (spec ID, then an optional task ID)
 
 Other sessions may be working on the same spec. Never pick a task by reading `tasks.md`; claim it, and work only on a task you hold.
 
-1. Claim the task: `jsdd claim <ID> <Tn>` for a given task, or else `jsdd claim <ID> next`, which prints the task it claimed (or the one this session already holds). If the claim fails, stop and report its message: who holds which task, or what the free tasks wait on.
+1. Claim the task: `jsdd claim <ID> <Tn>` for a given task (refused while earlier tasks are unfinished; then use `jsdd claim <ID> next`), or else `jsdd claim <ID> next`, which prints the task it claimed (or the one this session already holds). If the claim fails, stop and report its message: who holds which task, or what the free tasks wait on.
 2. Do exactly that task, following the plan. Test first where the task calls for it.
 3. Run the build and the relevant tests so the tree stays green.
 4. Run `jsdd done <ID> <Tn>`. It runs the task's check and, only when it passes, ticks the task and marks the claim done. Never tick a task by editing `tasks.md`. If the check fails, fix the work and run it again. For a `check: manual:` task, do the check (or ask the user to) and run `jsdd done <ID> <Tn> --manual "<who checked what>"`. If a task has no check at all, add one to its line in `tasks.md` and a row to the plan's Deviations.

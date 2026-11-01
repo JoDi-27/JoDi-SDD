@@ -3,7 +3,11 @@
 # Exit 2 blocks the call and sends stderr to Claude.
 input=$(cat)
 cmd=$(printf '%s' "$input" | jq -r '.tool_input.command // empty')
-printf '%s' "$cmd" | grep -Eq '(^|[;&|(])[[:space:]]*git[[:space:]]+(-[^[:space:]]+[[:space:]]+)*commit([[:space:]]|$)' || exit 0
+# git, its global options (flags, or -c/-C/--git-dir/... with a separate,
+# possibly quoted, argument), then commit.
+arg='("[^"]*"|'"'"'[^'"'"']*'"'"'|[^[:space:]]+)'
+opt="(-[^[:space:]]+|(-c|-C|--git-dir|--work-tree|--namespace|--config-env)[[:space:]]+$arg)[[:space:]]+"
+printf '%s' "$cmd" | grep -Eq "(^|[;&|(])[[:space:]]*git[[:space:]]+($opt)*commit([[:space:]]|\$)" || exit 0
 
 # Only in projects set up with jsdd init.
 cwd=$(printf '%s' "$input" | jq -r '.cwd // empty')

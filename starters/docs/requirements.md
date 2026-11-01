@@ -22,4 +22,4 @@
 
 ## 3. Open questions
 
-<!-- Move them to BACKLOG.md or docs/decisions.md once they need work to settle. -->
+<!-- A question that is a decision goes to docs/decisions.md "Still open" (with a BACKLOG.md line). One that needs research goes to BACKLOG.md as a spike. -->

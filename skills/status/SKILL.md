@@ -1,7 +1,7 @@
 ---
 name: status
 description: Show the progress board of specs in specs/ and what to work on next, or the detailed state of one spec. Use when asked about progress, status, or what to do next.
-argument-hint: "[spec ID]"
+argument-hint: [spec ID]
 ---
 
 # Status

@@ -8,8 +8,8 @@ A lightweight spec-driven development (SDD) kit. Every piece of work, spike or f
 | --- | --- | --- |
 | Product intent | `docs/intent.md` | What we are building and why, long term |
 | Requirements | `docs/requirements.md` | Every functional and non-functional requirement of the product, with IDs (`FR-AUTH-05`, `NFR-SEC-03`) and priorities |
-| Decisions | `docs/decisions.md` | Settled choices (`DEC-nn`) and open ones (`ND-nn`) |
-| Roadmap | `PLAN.md`, `BACKLOG.md` | Which phase we are in, which requirements each phase delivers, which spikes and decisions are open |
+| Decisions | `docs/decisions.md` | The register: settled choices (`DEC-nn`) and open ones (`ND-nn`), with options and reasoning |
+| Roadmap | `PLAN.md`, `BACKLOG.md` | Which phase we are in, which requirements each phase delivers, which spikes are open, and a one-line item per open decision that points to its row in `docs/decisions.md` |
 | Rules | `specs/constitution.md` | What every design must respect |
 | Work items | `specs/NNN-slug/` | What one slice of work does, how, and how far along it is |
 | Progress | `specs/STATUS.md` | Generated board of every spec |
@@ -84,17 +84,17 @@ Spikes go `draft → in-progress → done`, with no plan step.
 
 Several Claude Code sessions can work at once, in one checkout or in separate worktrees. Each session claims its work before starting it, so two sessions never pick the same thing:
 
-- `/jsdd:implement` claims one task at a time with `jsdd claim <ID> next`. That hands out the first task that is not ticked, not claimed, and whose earlier tasks are finished. Consecutive `[P]` tasks can be handed out together, so they are where parallel work within one spec comes from.
+- `/jsdd:implement` claims one task at a time with `jsdd claim <ID> next`. That hands out the first task that is not ticked, not claimed, and whose earlier tasks are finished. Consecutive `[P]` tasks can be handed out together, so they are where parallel work within one spec comes from. An explicit `jsdd claim <ID> <Tn>` follows the same order and is refused while earlier tasks are unfinished.
 - `/jsdd:specify`, `/jsdd:plan`, `/jsdd:spike`, and `/jsdd:verify` claim the whole spec. A spike stays claimed while its interview runs; a second session only adds notes to its Inbox.
 - `jsdd next` skips work other sessions hold and shows which tasks are free. `jsdd status` lists the claims.
 
-A claim is a directory created with `mkdir`, which is atomic, under `.git/sdd-claims/`. Every worktree on this machine shares it, and git does not track it. The owner is the Claude Code session ID. A finished task stays marked done until `jsdd claims --prune` sees its tick, because other worktrees do not see the tick until it is merged. `jsdd new` also reserves the spec ID there, so two worktrees never create the same number; prune drops the reservation only once the spec is on `main`. Prune never drops a claim whose spec folder is missing in this worktree, because that spec may live on another worktree's branch.
+A claim is a directory created with `mkdir`, which is atomic, under `.git/sdd-claims/`. Every worktree on this machine shares it, and git does not track it. The owner is the Claude Code session ID. `jsdd done` marks a finished task done, and it stays marked until `jsdd claims --prune` sees its tick, because other worktrees do not see the tick until it is merged. `jsdd new` also reserves the spec ID there, so two worktrees never create the same number; prune drops the reservation only once the spec is on `main`. Prune never drops a claim whose spec folder is missing in this worktree, because that spec may live on another worktree's branch.
 
 A session that ends without releasing leaves its claim behind. Claims older than 8 hours (`SDD_STALE_HOURS`) are shown as stale; free one with `jsdd release <ID> [Tn] --force` once you know that session is gone. Claims only coordinate sessions on one machine.
 
 ## Automation
 
-Claude Code hooks keep the kit honest: they print the board and the claims at session start, regenerate `specs/STATUS.md` when a spec or task list changes, block commit messages without a spec ID or `[meta]`, and warn at the end of a session that still holds claims. The hooks, skills, agents, and the `jsdd` script live in the plugin, not in this repository; the hooks do nothing in a project without `specs/constitution.md`.
+Claude Code hooks keep the kit honest: they print the board and the claims at session start, regenerate `specs/STATUS.md` when a spec, task list, `PLAN.md`, or `docs/requirements.md` changes, block commit messages without a spec ID or `[meta]`, and warn at the end of a session that still holds claims. The hooks, skills, agents, and the `jsdd` script live in the plugin, not in this repository; the hooks do nothing in a project without `specs/constitution.md`.
 
 ## Artifacts
 
@@ -103,6 +103,7 @@ Claude Code hooks keep the kit honest: they print the board and the claims at se
 | `spec.md` | yes | yes (spike template) | What and why: scenarios, EARS requirements, acceptance criteria. For a spike: inbox, goal questions, briefing, questions for you, log, findings, decisions |
 | `plan.md` | yes | no | How: design, decisions, constitution check, test strategy, deviations |
 | `tasks.md` | yes | no | Ordered, small, checkable tasks, plus verification evidence |
+| `prototype/` | no | yes | Throwaway code for a spike, never shipped |
 
 Templates are in the plugin's `templates/` folder. Frontmatter in `spec.md` is what the tooling reads:
 
@@ -128,7 +129,7 @@ In Claude Code:
 | `/jsdd:implement <ID> [task]` | Works through the tasks in order, ticking each when its check passes |
 | `/jsdd:verify <ID>` | Checks every acceptance criterion (or a spike's answers), records evidence, closes the spec, updates PLAN and BACKLOG |
 | `/jsdd:status [ID]` | Shows the board and what to do next |
-| `/jsdd:init [--migrate]` | Sets up a project (starters, settings, `.gitignore`), or moves it off the old install.sh copy |
+| `/jsdd:init [--migrate] [notes]` | Sets up a project (starters, settings, `.gitignore`), then interviews you to fill the starters; or moves it off the old install.sh copy |
 
 From a shell. In Claude Code the plugin puts `jsdd` on the Bash tool's PATH; in your own terminal, use its path in the plugin's `bin/` folder:
 
@@ -139,7 +140,6 @@ jsdd status --write                  # also regenerates specs/STATUS.md
 jsdd next                            # only what can be worked on now
 jsdd claim 003 next                  # claim the next free task of 003; prints its ID
 jsdd done 003 T4                     # run T4's check; only if it passes, tick T4 and mark it done
-jsdd release 003 T4 --done           # release a task claim, keeping it marked done
 jsdd claims --prune                  # list claims, dropping the ones no longer needed
 jsdd coverage FR-AUTH                # requirements in a group, with the specs covering each
 jsdd coverage --phase 1 --priority M --missing   # Phase 1 Musts with no spec yet
@@ -157,5 +157,5 @@ Progress is computed from the files: checkboxes in `tasks.md` (for a spike, the 
 - **Checks that run.** Each task's check is a command in backticks, and `jsdd done` ticks the task only when that command exits 0. A check no command can prove is written `check: manual: …`, and `jsdd done --manual "<who checked what>"` records the note on the task.
 - **Fresh-eyes review.** `/jsdd:plan` and `/jsdd:verify` ask the `sdd-reviewer` agent, which never saw the session that wrote the work, for a second opinion on the plan and on each acceptance criterion.
 - **Living documents.** When reality disagrees with the spec or plan, the document changes first and the change is logged (spec changelog, plan Deviations).
-- **Decisions on record.** Every real choice gets a row with alternatives and rationale; settled BACKLOG items are updated in place.
+- **Decisions on record.** Every real choice gets a row with alternatives and rationale. A choice that settles an open decision moves its row in `docs/decisions.md` from Still open to Decided, and ticks the BACKLOG item.
 - **Constitution check.** Every plan states how it respects the articles it touches.

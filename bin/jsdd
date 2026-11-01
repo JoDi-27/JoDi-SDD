@@ -36,9 +36,8 @@ Usage: jsdd <command>
 
   claim <ID>                    Claim a whole spec for this session (specify, plan, spike, verify)
   claim <ID> next               Claim the next task that can start now; prints its ID
-  claim <ID> <Tn>               Claim one task
-  release <ID> [Tn] [--done] [--force]
-                                Release a claim; --done keeps a task claim as finished
+  claim <ID> <Tn>               Claim one task, once the tasks it waits on are finished
+  release <ID> [Tn] [--force]   Release a claim; --force for another session's
   done <ID> <Tn> [--manual <note>]
                                 Run the task's check; only if it passes, tick the task
                                 and mark its claim done. A manual check needs --manual
@@ -104,6 +103,7 @@ spec_dir() {
 }
 
 # fm <file> <key>: value of a key in the YAML frontmatter (flat keys only).
+# A double-quoted value has its \" and \\ escapes undone (see "new").
 fm() {
   awk -v k="$2" '
     NR == 1 { if ($0 != "---") exit; next }
@@ -112,7 +112,16 @@ fm() {
       i = index($0, ":")
       if (i && substr($0, 1, i - 1) == k) {
         v = substr($0, i + 1)
-        gsub(/^[ \t]+|[ \t]+$/, "", v); gsub(/^"|"$/, "", v)
+        gsub(/^[ \t]+|[ \t]+$/, "", v)
+        if (length(v) >= 2 && v ~ /^".*"$/) {
+          v = substr(v, 2, length(v) - 2); out = ""
+          for (j = 1; j <= length(v); j++) {
+            c = substr(v, j, 1)
+            if (c == "\\" && j < length(v)) { j++; c = substr(v, j, 1) }
+            out = out c
+          }
+          v = out
+        } else gsub(/^"|"$/, "", v)
         print v; exit
       }
     }' "$1"
@@ -229,20 +238,28 @@ task_rows() {
     done
 }
 
-# pick_task <ID> <tasks.md>: the first task that can start now, or nothing.
-# A task can start once every task before it is finished (ticked or claimed done),
-# except the tasks in its own run of consecutive [P] tasks.
-pick_task() {
+# task_gates <ID> <tasks.md>: task_rows plus a fifth field, the unfinished
+# earlier tasks it waits on ("T3,T4"), or "-" if none. The one ordering rule:
+# a task can start once every task before it is finished (ticked or claimed
+# done), except the tasks in its own run of consecutive [P] tasks.
+task_gates() {
   task_rows "$1" "$2" | awk '
     {
       fin = ($2 == 1 || $4 == "done")
       if ($3 == 1 && !prevpar) rungate = pending
       gate = ($3 == 1) ? rungate : pending
-      if (!fin && $4 == "free" && !gate) { print $1; exit }
-      if (!fin) pending = 1
+      print $0, (gate == "" ? "-" : gate)
+      if (!fin) pending = pending (pending == "" ? "" : ",") $1
       prevpar = ($3 == 1)
     }'
 }
+
+# pick_task <ID> <tasks.md>: the first task that can start now, or nothing.
+# (awk reads to the end: exiting early would kill the writer with SIGPIPE under pipefail.)
+pick_task() { task_gates "$1" "$2" | awk '!found && $2 == 0 && $4 == "free" && $5 == "-" { print $1; found = 1 }'; }
+
+# gate_list <gate>: "T3,T4" as "T3, T4", for messages.
+gate_list() { printf '%s' "$1" | sed 's/,/, /g'; }
 
 # task_note <ID> <tasks.md>: what "next" says about a spec's tasks.
 task_note() {
@@ -290,7 +307,7 @@ claim_task() {
   fi
   if [ "$3" = next ]; then
     # Resume a task this session already holds.
-    t=$(task_rows "$id" "$f" | awk '$2 == 0 && $4 == "mine" { print $1; exit }')
+    t=$(task_rows "$id" "$f" | awk '!found && $2 == 0 && $4 == "mine" { print $1; found = 1 }')
     if [ -n "$t" ]; then echo "$t"; echo "($id $t is already claimed by you)" >&2; return; fi
     # If another session takes the pick first, mkdir fails and the next pick skips it.
     while t=$(pick_task "$id" "$f") && [ -n "$t" ]; do
@@ -300,19 +317,19 @@ claim_task() {
       echo "every task of $id is ticked or done; next: /jsdd:verify $id" >&2; exit 1
     fi
     echo "no task of $id can start now:" >&2
-    task_rows "$id" "$f" | while read -r t ticked _ state; do
+    task_gates "$id" "$f" | while read -r t ticked _ state gate; do
       [ "$ticked" = 1 ] && continue
       case $state in
         mine|other) echo "  $t claimed $(claim_desc "$id-$t")" >&2 ;;
-        free) echo "  $t waits on the tasks before it" >&2 ;;
+        free) if [ "$gate" = - ]; then echo "  $t free" >&2; else echo "  $t waits on $(gate_list "$gate")" >&2; fi ;;
       esac
     done
     exit 1
   fi
   t=$(norm_task "$3")
-  row=$(task_rows "$id" "$f" | awk -v t="$t" '$1 == t')
+  row=$(task_gates "$id" "$f" | awk -v t="$t" '$1 == t')
   [ -n "$row" ] || { echo "$id has no task $t" >&2; exit 1; }
-  read -r _ ticked _ state <<EOF
+  read -r _ ticked _ state gate <<EOF
 $row
 EOF
   [ "$ticked" = 1 ] && { echo "$id $t is already ticked" >&2; exit 1; }
@@ -321,6 +338,9 @@ EOF
     done) echo "$id $t is already done (claim marked done)" >&2; exit 1 ;;
     other) echo "$id $t is claimed $(claim_desc "$id-$t")" >&2; exit 1 ;;
   esac
+  if [ "$gate" != - ]; then
+    echo "$id $t waits on $(gate_list "$gate"); claim it with \`claim $id next\` once they are finished" >&2; exit 1
+  fi
   claim_take "$id-$t" || { echo "$id $t is claimed $(claim_desc "$id-$t")" >&2; exit 1; }
   echo "$t"
 }
@@ -330,7 +350,7 @@ EOF
 cmd_new() {
   [ $# -ge 2 ] || { usage >&2; exit 1; }
   local type=$1; shift
-  local title="$*" tpl id slug dir today esc
+  local title="$*" tpl id slug dir today esc yesc
   case $type in
     feature) tpl=spec.md ;;
     spike) tpl=spike.md ;;
@@ -340,9 +360,13 @@ cmd_new() {
   id=$(next_id)
   until claim_take "id-$id"; do id=$(next_id); done
   slug=$(slugify "$title"); dir="$SPECS_DIR/$id-$slug"; today=$(date +%Y-%m-%d)
-  esc=$(printf '%s' "$title" | sed -e 's/[\/&|]/\\&/g')
+  # Escaped for the sed replacement; the frontmatter's quoted title also
+  # escapes " and \ for YAML (fm undoes that). Headings keep the plain title.
+  esc=$(printf '%s' "$title" | sed -e 's/[\\/&|]/\\&/g')
+  yesc=$(printf '%s' "$title" | sed -e 's/[\\"]/\\&/g' -e 's/[\\/&|]/\\&/g')
   mkdir "$dir"
-  sed -e "s|{{ID}}|$id|g" -e "s|{{TITLE}}|$esc|g" -e "s|{{DATE}}|$today|g" "$TEMPLATES/$tpl" > "$dir/spec.md"
+  sed -e "s|^title: \"{{TITLE}}\"|title: \"$yesc\"|" -e "s|{{ID}}|$id|g" -e "s|{{TITLE}}|$esc|g" -e "s|{{DATE}}|$today|g" \
+    "$TEMPLATES/$tpl" > "$dir/spec.md"
   echo "${dir#"$ROOT"/}/spec.md"
 }
 
@@ -354,7 +378,8 @@ board() {
     }
     {
       prog = ($7 > 0) ? $6 "/" $7 : "-"
-      printf "| %s | %s | %s | %s | %s | %s | %s | [%s](%s/) |\n", $1, $2, $3, $4, prog, ($8 > 0 ? $8 : ""), ($5 == "-" ? "" : $5), $9, $10
+      t = $9; gsub(/\|/, "\\|", t)   # a | would end the table cell
+      printf "| %s | %s | %s | %s | %s | %s | %s | [%s](%s/) |\n", $1, $2, $3, $4, prog, ($8 > 0 ? $8 : ""), ($5 == "-" ? "" : $5), t, $10
       n[$3]++; total++
     }
     END {
@@ -408,12 +433,12 @@ cmd_claim() {
 
 cmd_release() {
   [ $# -ge 1 ] || { usage >&2; exit 1; }
-  local id name a t="" done=0 force=0
+  local id name a t="" force=0
   id=$(norm_id "$1"); shift
   for a in "$@"; do
     case $a in
-      --done) done=1 ;;
       --force) force=1 ;;
+      -*) echo "unknown option '$a' (task claims are marked done by: jsdd done <ID> <Tn>)" >&2; exit 1 ;;
       *) t=$(norm_task "$a") ;;
     esac
   done
@@ -422,12 +447,7 @@ cmd_release() {
   if [ $force = 0 ] && ! mine "$name"; then
     echo "$id $t is claimed $(claim_desc "$name"); use --force if that session is gone" >&2; exit 1
   fi
-  if [ $done = 1 ]; then
-    [ -n "$t" ] || { echo "--done is for task claims" >&2; exit 1; }
-    touch "$CLAIMS/$name/done"; echo "marked $id $t done"
-  else
-    rm -rf "$CLAIMS/${name:?}"; echo "released $id $t"
-  fi
+  rm -rf "$CLAIMS/${name:?}"; echo "released $id $t"
 }
 
 # task_line <tasks.md> <Tn>: "<line number><TAB><line>" of the task, outside

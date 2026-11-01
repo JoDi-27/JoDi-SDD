@@ -4,7 +4,7 @@ Open questions, spikes, and work after the MVP. The roadmap is in [PLAN.md](PLAN
 
 ## MVP: open decisions
 
-Each item has a suggested default. A spec or spike that settles one updates it here in place (ticked, with the choice and a link) and in `docs/decisions.md`.
+One line per open decision: its `ND-nn`, a one-line summary, and a suggested default. The full row (options, leaning, source) lives in `docs/decisions.md` "Still open". When a spike or spec settles it, the row moves to "Decided" there as `DEC-nn`, and the item here is ticked with a link to the spike or spec.
 
 - [ ] **ND-01 <decision>.** Suggested: <default and why>.
 

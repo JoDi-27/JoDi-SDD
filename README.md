@@ -54,8 +54,8 @@ Project scope records the plugin in the project's `.claude/settings.json`, so te
 
 In a Claude Code session in your project:
 
-1. Run `/jsdd:init` to set up the project (see [what it adds](#what-jsddinit-adds)), then start a new session so the hooks pick it up.
-2. Fill in `docs/intent.md`, `docs/requirements.md`, and the phases in `PLAN.md`. Claude can draft these with you. Set your test command under "Project specifics" in `specs/constitution.md`.
+1. Run `/jsdd:init` to set up the project (see [what it adds](#what-jsddinit-adds)). It then interviews you to fill in the intent, constitution, requirements, decisions, and plan, including your test command. Add notes about the product after the command to pre-fill answers.
+2. Start a new session so the hooks pick up the project.
 3. `/jsdd:status` shows the board and what to do next.
 4. `/jsdd:specify <idea>` writes a spec and asks you the questions that block it.
 5. `/jsdd:plan <ID>` approves the spec and writes the plan and tasks, which the reviewer agent checks.
@@ -70,7 +70,7 @@ The full workflow, including spec statuses, IDs, and the commit-message format, 
 
 | Command | What it does |
 | --- | --- |
-| `/jsdd:init` | Sets up the project |
+| `/jsdd:init [notes]` | Sets up the project, then interviews you to fill in its starter files |
 | `/jsdd:status [ID]` | Shows the board, what to do next, and requirement coverage |
 | `/jsdd:specify <idea, PLAN item, or ID>` | Creates or refines a feature spec |
 | `/jsdd:spike <topic or ID> [notes]` | Runs a spike: research first, then questions for you |

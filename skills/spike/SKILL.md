@@ -16,6 +16,7 @@ A spike is resolved together with the user. You and the spike-researcher agent f
 - Otherwise find the matching spike in the `BACKLOG.md` "Spikes" section, by topic. Check `jsdd status` for an existing spec on it. If there is none, create one with `jsdd new spike "<title>"` and fill in the frontmatter (`phase: 0`, `depends_on` with the spec IDs of the spikes it depends on, if they exist, and `refs` with the BACKLOG and PLAN items), Why, and Goal questions (one checkbox per question from BACKLOG.md, numbered G1, G2, …).
 - Claim it: `jsdd claim <ID>`. Keep the claim for as long as the interview runs in this session. If another session holds it, do not interview: write any notes the user gave into the spike's Inbox (change only that section), tell the user who holds the spike, and stop. If the claim is shown as stale and the user confirms that session is gone, take it over with `jsdd release <ID> --force` and claim again.
 - If a spec in `depends_on` is not `done`, say so and ask whether to go ahead.
+- Read the ND rows in `docs/decisions.md` "Still open" that the spike settles (named in its Why or its BACKLOG entry).
 - Any text after the ID is new information from the user: take it in (step 3) before anything else.
 
 ## 2. Prepare
@@ -52,6 +53,7 @@ Then wait. When the user replies, go back to step 3.
 When every goal question is ticked:
 
 - Draft "Recommendation and decisions" (one row per decision, alternatives, and why) and Follow-ups, and show them to the user for agreement. Revise until they agree.
+- Write each agreed decision to `docs/decisions.md`: move its ND row from "Still open" to "Decided" as a `DEC-nn` row, with the same reasoning, and tick the BACKLOG item (`/jsdd:verify` checks both).
 - Tick the first deliverable, release the spike (`jsdd release <ID>`), run `jsdd status --write`, and suggest `/jsdd:verify <ID>` to close the spike and update BACKLOG.md and PLAN.md.
 
 If the user stops before that, leave the file consistent (Log and Findings up to date, Inbox processed, status `in-progress`), release the spike, and report what is left.
