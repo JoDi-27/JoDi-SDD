@@ -12,7 +12,13 @@ claude --plugin-dir path/to/jodi-sdd
 
 Check the manifests with `claude plugin validate .`.
 
-To release, bump `version` in `.claude-plugin/plugin.json` and add an entry to [CHANGELOG.md](CHANGELOG.md). Projects pick up the new version with `claude plugin update jsdd@jodi-sdd`.
+## Releasing
+
+Every PR merged into `main` is released by [the Release workflow](.github/workflows/release.yml): it bumps `version` in `.claude-plugin/plugin.json`, moves the notes under `## Unreleased` in [CHANGELOG.md](CHANGELOG.md) into a section for the new version, tags it `vX.Y.Z`, and publishes a GitHub release. Projects pick up the new version with `claude plugin update jsdd@jodi-sdd`.
+
+- The bump is a patch unless the PR has the `release:minor` or `release:major` label. While the version is 0.x, use `release:minor` for breaking changes. `release:skip` merges without a release.
+- Write user-facing notes under `## Unreleased` in your PR. With none, the PR title becomes the entry.
+- Don't edit `version` by hand.
 
 ## Layout
 
