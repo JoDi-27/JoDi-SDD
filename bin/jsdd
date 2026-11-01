@@ -28,9 +28,12 @@ Usage: jsdd <command>
   init [--migrate] [--dry-run]  Set up this project for the kit: copy the starters
                                 where missing, refresh specs/README.md, and add the
                                 .gitignore lines; --migrate also removes a kit that
-                                install.sh copied into the project before the plugin
+                                install.sh copied into the project before the plugin.
+                                Also flags starter paths the project already uses in
+                                another format, and reports existing code and test commands
 
-  new <feature|spike> <title>   Create specs/NNN-slug/spec.md from a template
+  new <feature|spike|baseline> <title>
+                                Create specs/NNN-slug/spec.md from a template
   status [--write]              Print the progress board; --write also saves specs/STATUS.md
   next                          List what can be worked on now, and the command to run
 
@@ -41,6 +44,9 @@ Usage: jsdd <command>
   done <ID> <Tn> [--manual <note>]
                                 Run the task's check; only if it passes, tick the task
                                 and mark its claim done. A manual check needs --manual
+  done <ID> <AC-n> [--manual <note>]
+                                The same for an acceptance criterion of a baseline spec,
+                                in its spec.md; needs the claim on the whole spec
   claims [--prune]              List claims; --prune drops the ones no longer needed
 
   coverage [--phase N] [--priority M|S|C|W] [--missing] [ID or group ...]
@@ -90,6 +96,13 @@ norm_task() {
   t=$(printf '%s' "$1" | tr -d 'Tt')
   case $t in ""|*[!0-9]*) echo "invalid task ID '$1'" >&2; exit 1 ;; esac
   printf 'T%d' $((10#$t))
+}
+
+norm_ac() {
+  local a
+  a=$(printf '%s' "$1" | tr -d 'ACac-')
+  case $a in ""|*[!0-9]*) echo "invalid acceptance criterion '$1'" >&2; exit 1 ;; esac
+  printf 'AC-%d' $((10#$a))
 }
 
 # spec_dir <ID>: the spec's folder.
@@ -354,7 +367,8 @@ cmd_new() {
   case $type in
     feature) tpl=spec.md ;;
     spike) tpl=spike.md ;;
-    *) echo "unknown type '$type' (use feature or spike)" >&2; exit 1 ;;
+    baseline) tpl=baseline.md ;;
+    *) echo "unknown type '$type' (use feature, spike, or baseline)" >&2; exit 1 ;;
   esac
   # Reserve the ID, so sessions in other worktrees do not take it too.
   id=$(next_id)
@@ -407,6 +421,7 @@ next_up() {
           if (type[k] == "spike") hint = hint "; add notes to its Inbox"
         }
         else if (type[k] == "spike") hint = "/jsdd:spike " k
+        else if (type[k] == "baseline") hint = (st[k] == "draft" ? "/jsdd:baseline " : "/jsdd:verify ") k
         else if (tnote[k] == "all tasks done") hint = "/jsdd:verify " k
         else if (tnote[k] ~ /^no task free/) hint = tnote[k]
         else if (st[k] == "in-progress" || st[k] == "planned") hint = "/jsdd:implement " k (tnote[k] != "-" ? "   (" tnote[k] ")" : "")
@@ -478,21 +493,33 @@ check_of() {
 }
 
 # done: the only way a task gets ticked. Runs the task's check from the
-# repository root and ticks the task only when the check exits 0.
+# repository root and ticks the task only when the check exits 0. A baseline
+# spec has no tasks: its acceptance criteria in spec.md are ticked the same way.
 cmd_done() {
   [ $# -ge 2 ] || { usage >&2; exit 1; }
-  local id dir f t row tab n line cmd note="" rc tmp
-  id=$(norm_id "$1"); t=$(norm_task "$2"); shift 2
+  local id dir f t ac="" row tab n line cmd note="" rc tmp
+  id=$(norm_id "$1")
+  case $2 in [Aa][Cc]*) ac=1; t=$(norm_ac "$2") ;; *) t=$(norm_task "$2") ;; esac
+  shift 2
   if [ "${1:-}" = --manual ]; then
     note="${2:-}"
     [ -n "$note" ] || { echo "--manual needs a note: who checked what" >&2; exit 1; }
   elif [ $# -gt 0 ]; then
     echo "unknown option '$1'" >&2; exit 1
   fi
-  dir=$(spec_dir "$id"); f="$dir/tasks.md"
-  [ -f "$f" ] || { echo "$id has no tasks.md" >&2; exit 1; }
-  [ -d "$CLAIMS/$id-$t" ] && mine "$id-$t" \
-    || { echo "claim $id $t first: jsdd claim $id $t" >&2; exit 1; }
+  dir=$(spec_dir "$id")
+  if [ -n "$ac" ]; then
+    f="$dir/spec.md"
+    [ "$(fm "$f" type)" = baseline ] \
+      || { echo "$id is not a baseline spec; only baseline acceptance criteria are ticked with jsdd done" >&2; exit 1; }
+    [ -d "$CLAIMS/$id" ] && mine "$id" \
+      || { echo "claim $id first: jsdd claim $id" >&2; exit 1; }
+  else
+    f="$dir/tasks.md"
+    [ -f "$f" ] || { echo "$id has no tasks.md" >&2; exit 1; }
+    [ -d "$CLAIMS/$id-$t" ] && mine "$id-$t" \
+      || { echo "claim $id $t first: jsdd claim $id $t" >&2; exit 1; }
+  fi
   row=$(task_line "$f" "$t")
   [ -n "$row" ] || { echo "$id has no task $t" >&2; exit 1; }
   tab=$'\t'; n=${row%%"$tab"*}; line=${row#*"$tab"}
@@ -520,7 +547,7 @@ cmd_done() {
       if (ENVIRON["NOTE"] != "") $0 = $0 " · checked: " ENVIRON["NOTE"] " (" ENVIRON["DATE"] ")"
     }
     { print }' "$f" > "$tmp" && mv "$tmp" "$f"
-  touch "$CLAIMS/$id-$t/done"
+  [ -n "$ac" ] || touch "$CLAIMS/$id-$t/done"
   if [ -n "$cmd" ]; then echo "check passed; ticked $id $t"; else echo "ticked $id $t (manual check recorded)"; fi
 }
 
@@ -586,7 +613,9 @@ cmd_claims() {
 # Requirement rows are the table rows of $REQUIREMENTS whose first cell is an
 # ID like FR-AUTH-05 or NFR-SEC-03. A row with four cells (ID, text, source,
 # priority) has a priority; NFR rows have none. A spec covers a requirement
-# when its `refs` name the requirement's ID.
+# when its `refs` name the requirement's ID. A requirement is done when every
+# spec covering it (dropped ones aside) is done: a live spec that changes a row
+# a baseline already proved puts the row back in progress.
 
 REQUIREMENTS="${SDD_REQUIREMENTS:-$ROOT/docs/requirements.md}"
 PLAN_FILE="$ROOT/PLAN.md"
@@ -612,7 +641,7 @@ phase_scope() {
 }
 
 # coverage_rows: id, priority, specs ("007:done,009:draft" or "-"), state, text.
-# state: done (a done spec covers it), spec (a live spec covers it), none.
+# state: done (only done specs cover it), spec (a live spec covers it), none.
 coverage_rows() {
   [ -f "$REQUIREMENTS" ] || { echo "no requirements file at $REQUIREMENTS (set SDD_REQUIREMENTS)" >&2; exit 1; }
   spec_refs | SCOPE="${1:-}" awk -F '\t' '
@@ -620,7 +649,7 @@ coverage_rows() {
       n = split($3, ids, " ")
       for (i = 1; i <= n; i++) if ($2 != "dropped") {
         specs[ids[i]] = specs[ids[i]] (specs[ids[i]] ? "," : "") $1 ":" $2
-        if ($2 == "done") done[ids[i]] = 1
+        if ($2 == "done") done[ids[i]] = 1; else live[ids[i]] = 1
       }
       next
     }
@@ -631,7 +660,7 @@ coverage_rows() {
       text = c[3]; gsub(/\*\*/, "", text); gsub(/^ +| +$/, "", text)
       pri = "-"
       if (nf == 6) { pri = c[5]; gsub(/ /, "", pri); if (pri !~ /^[MSCW]$/) pri = "-" }
-      state = (id in done) ? "done" : ((id in specs) ? "spec" : "none")
+      state = (id in done && !(id in live)) ? "done" : ((id in specs) ? "spec" : "none")
       printf "%s\t%s\t%s\t%s\t%s\n", id, pri, (id in specs ? specs[id] : "-"), state, text
     }
     # A scope entry is an exact ID or a group prefix such as FR-SES.
@@ -719,8 +748,76 @@ OLD_KIT=".claude/skills/sdd-implement .claude/skills/sdd-plan .claude/skills/sdd
 OLD_HOOKS='\.claude/hooks/(session-start|pre-commit-message|post-edit-status|stop-claims)\.sh'
 ALLOW='Bash(jsdd *)'
 
+# kit_marker <starter>: a line every kit-format copy of the file has. An
+# existing file without it is the project's own document under the same name.
+kit_marker() {
+  case $1 in
+    docs/intent.md) echo '^## The product in one sentence' ;;
+    docs/requirements.md) echo '^\| *N?FR-[A-Z0-9]+-[0-9]+[a-z]? *\|' ;;
+    docs/decisions.md) echo '^## Decided' ;;
+    PLAN.md) echo '^## Phase [0-9]' ;;
+    BACKLOG.md) echo '^## Spikes' ;;
+    specs/constitution.md) echo '^## Engineering articles' ;;
+  esac
+}
+
+# foreign_starters: starter paths the project already has in another format.
+foreign_starters() {
+  local f re
+  for f in docs/intent.md docs/requirements.md docs/decisions.md PLAN.md BACKLOG.md specs/constitution.md; do
+    [ -f "$ROOT/$f" ] || continue
+    re=$(kit_marker "$f")
+    grep -Eq "$re" "$ROOT/$f" || printf '%s\n' "$f"
+  done
+}
+
+# test_commands: test commands the project's build files suggest, one per line.
+test_commands() {
+  local s
+  if [ -f "$ROOT/package.json" ]; then
+    s=$(jq -r '.scripts.test // empty' "$ROOT/package.json" 2>/dev/null || true)
+    case $s in
+      ""|*"no test specified"*) ;;
+      *) if [ -f "$ROOT/pnpm-lock.yaml" ]; then echo "pnpm test"
+         elif [ -f "$ROOT/yarn.lock" ]; then echo "yarn test"
+         elif [ -f "$ROOT/bun.lockb" ] || [ -f "$ROOT/bun.lock" ]; then echo "bun run test"
+         else echo "npm test"; fi ;;
+    esac
+  fi
+  for s in Makefile makefile GNUmakefile; do
+    [ -f "$ROOT/$s" ] && grep -Eq '^test:' "$ROOT/$s" && { echo "make test"; break; }
+  done
+  if [ -f "$ROOT/pytest.ini" ] || grep -qs pytest "$ROOT/pyproject.toml" "$ROOT/setup.cfg" "$ROOT/tox.ini"; then echo "pytest"; fi
+  [ -f "$ROOT/go.mod" ] && echo "go test ./..."
+  [ -f "$ROOT/Cargo.toml" ] && echo "cargo test"
+  [ -f "$ROOT/mix.exs" ] && echo "mix test"
+  [ -f "$ROOT/deno.json" ] && echo "deno test"
+  [ -f "$ROOT/pom.xml" ] && echo "mvn test"
+  if [ -f "$ROOT/build.gradle" ] || [ -f "$ROOT/build.gradle.kts" ]; then
+    if [ -f "$ROOT/gradlew" ]; then echo "./gradlew test"; else echo "gradle test"; fi
+  fi
+  [ -f "$ROOT/Gemfile" ] && [ -d "$ROOT/spec" ] && echo "bundle exec rspec"
+  return 0
+}
+
+# existing_code: what init reports about a project that already has code, for
+# /jsdd:init to decide whether it is brownfield. Prints nothing outside git or
+# when only the kit's own paths are tracked.
+existing_code() {
+  local files commits tests
+  files=$(cd "$ROOT" && git ls-files 2>/dev/null \
+    | grep -vE '^(\.claude/|\.github/|specs/|docs/|PLAN\.md$|BACKLOG\.md$|README|LICENSE|CHANGELOG|CONTRIBUTING|\.gitignore$)' \
+    | wc -l | tr -d ' ' || true)
+  [ "${files:-0}" -gt 0 ] || return 0
+  commits=$(cd "$ROOT" && git rev-list --count HEAD 2>/dev/null || echo 0)
+  tests=$(test_commands | paste -sd, - | sed 's/,/, /g')
+  echo "Existing code:"
+  echo "  tracked files outside the kit's paths: $files; commits: $commits"
+  echo "  test commands found: ${tests:-none}"
+}
+
 cmd_init() {
-  local migrate="" dry="" a f old="" settings="$ROOT/.claude/settings.json" json new
+  local migrate="" dry="" a f old="" foreign settings="$ROOT/.claude/settings.json" json new
   for a in "$@"; do
     case $a in
       --migrate) migrate=1 ;;
@@ -737,14 +834,21 @@ cmd_init() {
     exit 1
   fi
 
+  foreign=$(foreign_starters | tr '\n' ' ')
   echo "Starters:"
   (cd "$STARTERS" && find . -type f ! -name .DS_Store | sed 's|^\./||' | sort) | while IFS= read -r f; do
     if [ ! -e "$ROOT/$f" ]; then
       echo "  add      $f"; run mkdir -p "$(dirname "$ROOT/$f")"; run cp "$STARTERS/$f" "$ROOT/$f"
     elif [ "$f" = specs/README.md ] && ! cmp -s "$STARTERS/$f" "$ROOT/$f"; then
       echo "  update   $f"; run cp "$STARTERS/$f" "$ROOT/$f"
+    else
+      case " $foreign " in *" $f "*) echo "  keep     $f (the project's own file, not in kit format)" ;; esac
     fi
   done
+  if [ -n "$foreign" ]; then
+    echo "  The kit cannot read the files marked keep. Move each to docs/legacy/ and run init"
+    echo "  again to get the kit's version; /jsdd:init then folds the old content into it."
+  fi
 
   if [ -n "$old" ]; then
     echo "Old kit (from install.sh):"
@@ -776,6 +880,8 @@ cmd_init() {
   fi
 
   echo
+  a=$(existing_code)
+  [ -z "$a" ] || printf '%s\n\n' "$a"
   if [ -n "$dry" ]; then echo "Dry run: nothing changed."; return; fi
   [ -z "$old" ] || echo "The removed files are still in git history. Move any project tweaks (test command, architecture rules) into specs/constitution.md, under Project specifics."
   if grep -q 'FR-AUTH-01 | <one behavior>' "$ROOT/docs/requirements.md" 2>/dev/null; then

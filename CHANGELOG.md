@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+Support for existing codebases (brownfield projects).
+
+- New `/jsdd:baseline <area>` and spec type `baseline`. A baseline records what one area of existing code does today: the new `sdd-surveyor` agent drafts its current behavior from the code and tests, you confirm what is intended, and the rows go into `docs/requirements.md`. The baseline spec's acceptance criteria are the existing tests. It has no plan or tasks, and `/jsdd:verify` closes it once every check passes. Create one with `jsdd new baseline "<title>"`.
+- `jsdd done <ID> AC-n` ticks a baseline's acceptance criterion, only when its check passes (or with `--manual`).
+- `/jsdd:init` handles existing code. `jsdd init` reports the tracked code and the test commands it finds, and marks as `keep` any file at a kit path that is the project's own document in another format. The skill asks whether the project is an existing product. If so, it surveys the code, plans one baseline per area the next milestone touches, and offers to move the files marked `keep` to `docs/legacy/` and fold their content in.
+- `/jsdd:specify` suggests a baseline when a feature changes existing code in an area with no requirement rows. `/jsdd:plan` and `/jsdd:implement` refuse baselines.
+- **Behavior change:** `jsdd coverage` now counts a requirement as done only when every spec covering it is done (dropped specs aside). Before, one done spec was enough. A feature that changes a row a baseline proved now shows it in progress until the feature is verified. A requirement split across several specs is done only when all of them are.
+
 ## 0.3.0 (2026-11-01)
 
 - `docs/decisions.md` is the single register of decisions. Open ones (`ND-nn`) become `DEC-nn` rows when a spike or plan settles them; the backlog keeps a one-line item. Spike, plan, verify, and both agents read and write it.

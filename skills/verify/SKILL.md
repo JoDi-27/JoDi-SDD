@@ -1,6 +1,6 @@
 ---
 name: verify
-description: Verify a spec's acceptance criteria (or a spike's answers) with evidence, then close it and update PLAN.md and BACKLOG.md. Use when all of a spec's tasks are ticked.
+description: Verify a spec's acceptance criteria (or a spike's answers) with evidence, then close it and update PLAN.md and BACKLOG.md. Use when all of a spec's tasks are ticked, or when a baseline spec's current behavior is confirmed.
 argument-hint: <spec ID>
 ---
 
@@ -15,6 +15,7 @@ You prove that the spec is met. You do not add features.
 - Open `specs/$ARGUMENTS-*/`. The status must be `in-progress`.
 - Claim the spec: `jsdd claim <ID>`. If another session holds the spec or one of its tasks, stop and report who.
 - Every task must be ticked; for a spike, every goal question and question for the user, and the first deliverable (recommendation agreed). If not, list what is left and suggest `/jsdd:implement <ID>` (features) or `/jsdd:spike <ID>` (spikes).
+- A baseline (`type: baseline`) has no tasks: it is ready when its status is `in-progress` and it has no `[NEEDS CLARIFICATION` markers. If it is still `draft`, suggest `/jsdd:baseline <ID>`. Go to step 2c.
 
 ## 2a. Feature: check every acceptance criterion
 
@@ -34,6 +35,17 @@ If any AC fails, do not close the spec. Add a fix task for each failure to `task
 - Each BACKLOG.md item the spike settles is updated in place: ticked, with the choice and a link to the spike.
 - Each decision the spike settled is in `docs/decisions.md` as a `DEC-nn` row (moved from its ND row), with the same reasoning.
 - Each Follow-up exists as a new spec, a BACKLOG.md item, or an agreed decision to drop it. Ask the user which before creating new specs.
+
+## 2c. Baseline: check current behavior
+
+A baseline proves that the code does what it says today. Nothing is built, so a failure means the description is wrong, not the code.
+
+- Launch the `sdd-reviewer` agent in `baseline` mode with the spec folder. While it runs, do the checks below yourself.
+- Tick each acceptance criterion only with `jsdd done <ID> AC-n`, which runs its check from the repository root and ticks it only when the check passes. For `check: manual: …`, do or ask for the check and run `jsdd done <ID> AC-n --manual "<who checked what>"`.
+- Fill one row of the spec's Evidence table per AC: pass or fail, and the test name or command output, or who checked what.
+- When a check fails, find out why with the user. If the code behaves differently from the description, rewrite the R and AC to match the code (a baseline records what is, not what should be) and record the gap under Findings with where it went. If the test itself is broken or flaky, use a manual check instead and add a BACKLOG.md "Next" item to fix the test. Never close a baseline with an AC that is not ticked.
+- Also confirm: every R is covered by an AC, every requirement ID in `refs` is tagged on an R, and every Finding says where it went.
+- Compare with the reviewer's report. Where it says a test does not exercise the behavior its AC claims, or an R misdescribes the code, fix the spec, or treat the disagreement as a failure and ask the user.
 
 ## 3. Close
 

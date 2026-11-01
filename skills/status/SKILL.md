@@ -12,7 +12,7 @@ Arguments: $ARGUMENTS
 
 - Run `jsdd status --write` and show the board.
 - Summarize in a few lines: what is in progress, what is next and the command for it (from "Next up"), what other sessions hold (from "Claims", pointing out stale ones and that `jsdd release <ID> [Tn] --force` frees them), what is blocked or waiting, and specs with open questions.
-- Relate it to the roadmap: which PLAN.md phase is current, and which of its items have no spec yet. Suggest the command for the next one in PLAN.md order: `/jsdd:spike` for a spike, `/jsdd:specify` otherwise.
+- Relate it to the roadmap: which PLAN.md phase is current, and which of its items have no spec yet. Suggest the command for the next one in PLAN.md order: `/jsdd:spike` for a spike, `/jsdd:baseline <area>` for a baseline, `/jsdd:specify` otherwise.
 - Requirement coverage for the current phase: run `jsdd coverage --phase <N> --priority M` and give one line, Musts with a spec and done out of the total, plus the uncovered Musts grouped by PLAN.md item (`--missing`).
 
 ## With an ID
