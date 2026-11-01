@@ -15,7 +15,7 @@ updated: {{DATE}}
 spec.md says WHAT and WHY. No technology, schemas, class names, or code: those go in plan.md.
 Write anything unknown as a NEEDS CLARIFICATION marker, for example:
   - [NEEDS CLARIFICATION: can a run have more than one owner?]
-and never guess. /sdd:plan refuses to start while markers remain.
+and never guess. /jsdd:plan refuses to start while markers remain.
 Delete these comments once the section is filled in.
 -->
 
@@ -56,7 +56,7 @@ Numbered, one behavior each, in EARS form:
 
 ## Acceptance criteria
 
-<!-- Observable and testable. Every requirement is covered by at least one. /sdd:verify checks each one and records evidence in tasks.md. -->
+<!-- Observable and testable. Every requirement is covered by at least one. /jsdd:verify checks each one and records evidence in tasks.md. -->
 
 - **AC-1** Given ..., when ..., then ...
 

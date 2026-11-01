@@ -10,9 +10,9 @@ Arguments: $ARGUMENTS (spec ID, then an optional task ID)
 
 ## 1. Gate
 
-- Open the spec folder `specs/<ID>-*/`. If no ID was given, run `sdd next` and ask which one.
-- If the spec is a spike (`type: spike`), stop and follow the `/sdd:spike` skill instead.
-- The status must be `planned` or `in-progress`. If it is `draft` or `approved`, stop and suggest `/sdd:plan <ID>`.
+- Open the spec folder `specs/<ID>-*/`. If no ID was given, run `jsdd next` and ask which one.
+- If the spec is a spike (`type: spike`), stop and follow the `/jsdd:spike` skill instead.
+- The status must be `planned` or `in-progress`. If it is `draft` or `approved`, stop and suggest `/jsdd:plan <ID>`.
 - Running this command is the user's approval of the plan. If the status is `planned`, set it to `in-progress` and add a changelog line.
 - Read `specs/constitution.md`, `spec.md`, `plan.md`, and `tasks.md`.
 
@@ -20,14 +20,14 @@ Arguments: $ARGUMENTS (spec ID, then an optional task ID)
 
 Other sessions may be working on the same spec. Never pick a task by reading `tasks.md`; claim it, and work only on a task you hold.
 
-1. Claim the task: `sdd claim <ID> <Tn>` for a given task, or else `sdd claim <ID> next`, which prints the task it claimed (or the one this session already holds). If the claim fails, stop and report its message: who holds which task, or what the free tasks wait on.
+1. Claim the task: `jsdd claim <ID> <Tn>` for a given task, or else `jsdd claim <ID> next`, which prints the task it claimed (or the one this session already holds). If the claim fails, stop and report its message: who holds which task, or what the free tasks wait on.
 2. Do exactly that task, following the plan. Test first where the task calls for it.
 3. Run the build and the relevant tests so the tree stays green.
-4. Run `sdd done <ID> <Tn>`. It runs the task's check and, only when it passes, ticks the task and marks the claim done. Never tick a task by editing `tasks.md`. If the check fails, fix the work and run it again. For a `check: manual:` task, do the check (or ask the user to) and run `sdd done <ID> <Tn> --manual "<who checked what>"`. If a task has no check at all, add one to its line in `tasks.md` and a row to the plan's Deviations.
+4. Run `jsdd done <ID> <Tn>`. It runs the task's check and, only when it passes, ticks the task and marks the claim done. Never tick a task by editing `tasks.md`. If the check fails, fix the work and run it again. For a `check: manual:` task, do the check (or ask the user to) and run `jsdd done <ID> <Tn> --manual "<who checked what>"`. If a task has no check at all, add one to its line in `tasks.md` and a row to the plan's Deviations.
 5. If the user has asked for commits, commit with a message starting `[<ID>] T<n>`; otherwise suggest that message.
 6. Continue from step 1 with `claim <ID> next`, unless a task ID was given.
 
-Stop and ask the user when: a check fails and the fix is not obvious, the plan turns out wrong, a task needs a decision the plan does not cover, or something requires a human action. If you stop with the task unfinished, keep the claim only if this session will resume it; otherwise release it with `sdd release <ID> <Tn>`.
+Stop and ask the user when: a check fails and the fix is not obvious, the plan turns out wrong, a task needs a decision the plan does not cover, or something requires a human action. If you stop with the task unfinished, keep the claim only if this session will resume it; otherwise release it with `jsdd release <ID> <Tn>`.
 
 When reality disagrees with the documents, update them before the code (Article 4):
 - Plan wrong: add a row to the plan's Deviations, and change the design or tasks.
@@ -36,5 +36,5 @@ When reality disagrees with the documents, update them before the code (Article 
 
 ## 3. Finish
 
-- Make sure this session holds no claim it will not resume (`sdd claims`). Run `sdd status --write`.
-- Report briefly: tasks done in this session, what is left, deviations recorded, and the next step: `/sdd:implement <ID>` again, or `/sdd:verify <ID>` once every task is ticked.
+- Make sure this session holds no claim it will not resume (`jsdd claims`). Run `jsdd status --write`.
+- Report briefly: tasks done in this session, what is left, deviations recorded, and the next step: `/jsdd:implement <ID>` again, or `/jsdd:verify <ID>` once every task is ticked.

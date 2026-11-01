@@ -10,7 +10,7 @@ Each item has a suggested default. A spec or spike that settles one updates it h
 
 ## Spikes
 
-Run each with `/sdd:spike <topic>`. The skill creates the spike spec from the entry here, one goal question per bullet.
+Run each with `/jsdd:spike <topic>`. The skill creates the spike spec from the entry here, one goal question per bullet.
 
 ### <Spike name>
 
