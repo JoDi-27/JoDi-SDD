@@ -18,6 +18,7 @@ Every PR merged into `main` is released by [the Release workflow](.github/workfl
 
 - The bump is a patch unless the PR has the `release:minor` or `release:major` label. While the version is 0.x, use `release:minor` for breaking changes. `release:skip` merges without a release.
 - Write user-facing notes under `## Unreleased` in your PR. With none, the PR title becomes the entry.
+- `main` is protected: changes land through a PR whose `lint` and `smoke` checks pass, and nobody force-pushes or deletes it. The release commit and tag are pushed with the `RELEASE_TOKEN` secret, a fine-grained token of a repository admin with Contents read and write on this repository, because the workflow's own token cannot bypass the protection.
 - Don't edit `version` by hand.
 
 ## Layout

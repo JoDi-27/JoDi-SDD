@@ -1,6 +1,9 @@
 # Release on every merged PR into main: bump the plugin version (patch, or the
 # PR's release:minor / release:major label), move CHANGELOG.md's Unreleased notes
 # under it, then commit, tag, and publish a GitHub release. release:skip opts out.
+# main is protected (PRs and CI only, admins may bypass), so the push uses
+# RELEASE_TOKEN: a fine-grained token of a repository admin with Contents read and
+# write on this repository. GITHUB_TOKEN cannot bypass the rules.
 name: Release
 
 on:
@@ -25,6 +28,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: main
+          token: ${{ secrets.RELEASE_TOKEN }}
 
       - name: Bump version and changelog
         id: bump
