@@ -39,7 +39,7 @@ Everything is plain Markdown in your repository, driven by one bash script. Ther
 JoDi-SDD is built for Claude Code only, so it can use what Claude Code offers instead of asking the model to behave:
 
 - **Done means the check passed.** In Spec Kit, `/speckit.implement` tells the model to mark each task `[X]` when it's complete, and its checklist gate counts checkboxes. Here, each task names a check command, and `jsdd done` ticks it only when that command exits 0. A task that can only be checked by hand needs a note saying who checked what.
-- **Reviews come from a fresh context.** Spec Kit's `/speckit.analyze` and `/speckit.converge` run in the session that wrote the work, which is biased toward it. JoDi-SDD hands each plan, and each spec before it closes, to a read-only reviewer subagent that never saw that session. It judges only what is on disk and gives a verdict per acceptance criterion, with evidence.
+- **Reviews come from a fresh context.** Spec Kit's `/speckit.analyze` and `/speckit.converge` run in the session that wrote the work, which is biased toward it. JoDi-SDD hands each plan, and each spec before it closes, to a read-only reviewer subagent that never saw that session. It judges only what is on disk and gives a verdict per acceptance criterion, with evidence. Like `/speckit.converge`, `/jsdd:verify` also reads the code against each requirement and proposes a fix for each gap. Unlike converge, it adds no tasks itself: it shows you the report, and the fixes you approve go back through `/jsdd:plan` as a reviewed amendment. If you decline, the spec is blocked until you plan them or drop it.
 - **Hooks enforce what prompts can only ask for.** The board and the open claims are put into context at the start of every session, so Claude knows what's in progress without being told. A commit whose message doesn't cite a spec or task is blocked before it runs. `STATUS.md` is regenerated whenever a spec or task list is edited, and a session that stops while still holding claims gets a warning.
 - **Research happens in its own context too.** A spike's research agent reads the repository and current documentation and settles what it can before you're asked anything. On existing code, a survey agent drafts how an area works today from its code and tests, for you to confirm.
 - **Parallel sessions share one board.** Claims live in the git common directory, so sessions in separate worktrees see each other's work and don't pick up the same task. Spec Kit tracks a single active feature in a file you point at by hand.
@@ -93,9 +93,37 @@ In a Claude Code session in your project:
 4. `/jsdd:specify <idea>` writes a spec and asks you the questions that block it.
 5. `/jsdd:plan <ID>` approves the spec and writes the plan and tasks, which the reviewer agent checks.
 6. `/jsdd:implement <ID>` works through the tasks, ticking each one when its check passes.
-7. `/jsdd:verify <ID>` checks every acceptance criterion against evidence and closes the spec.
+7. `/jsdd:verify <ID>` checks every acceptance criterion against evidence and the code against every requirement. If it finds gaps, it shows you a report and asks whether to fix them; `/jsdd:plan <ID>` then plans the fixes as an amendment. Otherwise it closes the spec.
 
 For an open question rather than a feature, run `/jsdd:spike <topic>` instead of steps 4 to 7.
+
+## Spec lifecycle
+
+A feature spec moves through these statuses. Each arrow names the `/jsdd:` command that moves the spec, in bold, and the outcome or reason, in italics. Running a command is your approval of the step before.
+
+```mermaid
+stateDiagram-v2
+  [*] --> draft: <b>specify</b>
+  draft --> planned: <b>plan</b>
+  planned --> in_progress: <b>implement</b>
+  in_progress --> done: <b>verify</b><br/><i>converged</i>
+  in_progress --> approved: <b>verify</b><br/><i>gaps approved</i>
+  in_progress --> blocked: <b>verify</b><br/><i>gaps declined</i>
+  approved --> planned: <b>plan</b><br/><i>amendment</i>
+  blocked --> planned: <b>plan</b><br/><i>amendment</i>
+  blocked --> dropped: <i>dropped by hand</i>
+  done --> [*]
+  dropped --> [*]
+  in_progress: in-progress
+```
+
+- **approved:** a spec comes back here when you approve the fixes for gaps that verification found. (`/jsdd:plan` also sets it at the start of a first run, so a new spec stays at `approved` only if that run stopped partway; running `/jsdd:plan` again finishes it.)
+- **converged:** every acceptance criterion passes with evidence, and the code does what each requirement says, with nothing extra and no unrecorded drift from the plan.
+- **gaps:** `/jsdd:verify` only judges. It writes `verify-report.md` in the spec folder, with a numbered proposed action for each gap (G1, G2, …), and asks whether to fix them. It changes no tasks, plan, or spec. Approve, and the spec goes back to `approved`. Decline, and only the report is kept and the spec is `blocked`.
+- **amendment:** `/jsdd:plan` on a spec with an approved or declined report plans the gaps as an amendment. It adds a numbered section (A1, A2, …) to the plan's Amendments, saying what each gap became: follow-up tasks, a spec change, a Deviation, or a BACKLOG item. The follow-up tasks go in `tasks.md` under their own heading, and each names its gap. The reviewer checks the amendment, and `/jsdd:implement` builds it as usual. If the amendment needs no tasks, the spec goes straight back to `in-progress` for `/jsdd:verify`.
+- **blocked:** `jsdd next` shows the spec as waiting on a declined verification. Running `/jsdd:plan <ID>` is your approval to fix the gaps after all; otherwise, drop the spec. A spec can also be blocked or dropped by hand at any stage, with the reason in its changelog.
+
+Spikes and baselines skip the plan: they go `draft → in-progress → done`. See [starters/specs/README.md](starters/specs/README.md#lifecycle).
 
 ## Existing codebases
 
@@ -118,10 +146,10 @@ The full workflow, including spec statuses, IDs, and the commit-message format, 
 | `/jsdd:status [ID]` | Shows the board, what to do next, and requirement coverage |
 | `/jsdd:specify <idea, PLAN item, or ID>` | Creates or refines a feature spec |
 | `/jsdd:spike <topic or ID> [notes]` | Runs a spike: research first, then questions for you |
-| `/jsdd:plan <ID>` | Approves the spec, then writes the plan and tasks |
+| `/jsdd:plan <ID>` | Approves the spec, then writes the plan and tasks; after a verification with gaps, plans the fixes as an amendment |
 | `/jsdd:implement <ID> [task]` | Works through the tasks |
 | `/jsdd:baseline <area or ID>` | Records how an area of existing code works today, checked by its existing tests |
-| `/jsdd:verify <ID>` | Checks the acceptance criteria (or a spike's answers) and closes the spec |
+| `/jsdd:verify <ID>` | Checks the acceptance criteria (or a spike's answers) and the code against the spec, then closes it, or reports gaps for your approval |
 
 Under the hood, these commands use the `jsdd` CLI, which the plugin adds to the PATH for Claude's Bash tool. Run `jsdd help` for its subcommands.
 

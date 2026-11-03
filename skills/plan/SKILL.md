@@ -1,6 +1,6 @@
 ---
 name: plan
-description: Approve a spec and write its technical plan (plan.md) and task list (tasks.md). Use when a feature spec in specs/ is ready to be planned; spikes are run with /jsdd:spike instead.
+description: Approve a spec and write its technical plan (plan.md) and task list (tasks.md), or amend them with follow-up tasks for the gaps a verification found. Use when a feature spec in specs/ is ready to be planned, or when /jsdd:verify left it approved or blocked with gaps to fix; spikes are run with /jsdd:spike instead.
 argument-hint: <spec ID>
 ---
 
@@ -18,6 +18,7 @@ You write the HOW for one spec. You do not implement.
 - If the spec has any `[NEEDS CLARIFICATION` markers, stop: list them and suggest `/jsdd:specify <ID>`.
 - If any spec in `depends_on` is not `done`, say so and ask whether to plan anyway.
 - Claim the spec: `jsdd claim <ID>`. If another session holds it, stop and report who.
+- **Amend mode:** if the folder has a `verify-report.md` with gaps that are not yet planned (no "Planned as" line), and the status is `approved` (Decision `approved`) or `blocked` (Decision `declined`), go to step 6 instead of steps 2 to 5. Any other `blocked` spec: report the reason from its changelog and stop.
 - Running this command is the user's approval of the spec. If the status is `draft`, set it to `approved` and add a changelog line.
 
 ## 2. Load context
@@ -42,3 +43,21 @@ You write the HOW for one spec. You do not implement.
 
 - Set `status: planned` and `updated` in the spec. Release the spec (`jsdd release <ID>`) and run `jsdd status --write`.
 - Report briefly: the key decisions, the number of tasks, any risks, the reviewer findings you did not apply, and the next step: the user reviews the plan, then runs `/jsdd:implement <ID>`.
+
+## 6. Amend mode: plan the gaps a verification found
+
+The plan and tasks already exist and were built. You add to them; you do not rewrite them. Every change is traceable to a gap in `verify-report.md`.
+
+1. **Gate.** Plan only what the user decided. If the status is `blocked`, show the report's Proposed actions and ask the user to confirm which to plan, and for each gap with options, which one; record the answers on the gaps as verify does (`Chosen: b (<by whom>)`, `(dropped by <who>)`). Then set Decision `approved (<by whom>, via /jsdd:plan, <date>)` and add a changelog line: "Resumed: planning the gaps from verification round <n>." If the status is `approved` but a gap with options has no `Chosen:` answer, ask for that too. **Never record an approval or a choice the user did not give.** If you cannot get an answer (for example, in a run nobody is watching), change nothing, release the spec, and report what is waiting for the user. Read `specs/constitution.md`, `spec.md`, `plan.md`, `tasks.md`, and `verify-report.md`.
+2. **Number the amendment** A1, A2, … after the last one in the plan's Amendments section.
+3. **Plan each approved gap**, never a dropped one:
+   - **Fix the code:** one or more tasks, following the task rules in step 3.
+   - **Change the spec:** edit `spec.md` with a changelog line that names the gap ("A2/G3: R3 reworded to match the code"). If the code still has to change after that, add a task too.
+   - **Record a Deviation:** add a row to the plan's Deviations, starting with the amendment and gap ("A2/G4: …").
+   - **Move to BACKLOG.md:** add the item there.
+   - A Design section the fix changes is edited in place, with "(changed in A<n>)" after the change.
+4. **Write the follow-up tasks** in `tasks.md` under the Tasks section, after the last task, under a heading `### A<n> · Follow-up from verify round <r>`. Number them after the last task, and end each one with the gap it serves: `→ AC-2 (A2/G1)`.
+5. **Write the amendment** in the plan's Amendments section, from the template's example. It is self-contained: its source (the report round and who approved it), one row per gap, planned or dropped, saying what it became (tasks, spec change, Deviation, or BACKLOG item), and, when the amendment has any, its own Decisions (including the options chosen), Constitution check, Test strategy rows for the ACs it adds or re-tests, and Risks. Do not edit the plan's original tables to add these, and do not ask anyone to merge them later: the original plan stays as it was built, and the amendment says what changed. Every gap in the report's Proposed actions has a row.
+6. **Review.** Launch the `sdd-reviewer` agent in `plan` mode with the spec folder, saying that amendment A<n> is new. Fix the blocking findings as in step 4.
+7. **Finish.** In `verify-report.md`, set "Planned as" to `A<n> in plan.md`. If the amendment added tasks, set `status: planned`; implementing them is the user's approval of the amendment. If it added none (only spec changes, Deviations, or BACKLOG items), set `status: in-progress` and suggest `/jsdd:verify <ID>` to check again. Add a changelog line, release the spec, and run `jsdd status --write`.
+8. Report briefly: the amendment, each gap and what it became, the follow-up tasks, and the next step: the user reviews the amendment, then runs `/jsdd:implement <ID>` (or `/jsdd:verify <ID>` when no tasks were added).

@@ -189,6 +189,9 @@ records() {
     num=$(basename "$d" | cut -c1-3); sclaim=-; tnote=-
     [ -d "$CLAIMS/$num" ] && sclaim=$(claim_desc "$num")
     case $status in planned|in-progress) [ -f "$d/tasks.md" ] && tnote=$(task_note "$num" "$d/tasks.md") ;; esac
+    # A verification the user declined blocks the spec until /jsdd:plan resumes it.
+    if [ "$status" = blocked ] && [ -f "$d/verify-report.md" ] &&
+      uncomment "$d/verify-report.md" | grep -q '^\*\*Decision:\*\* declined'; then tnote="verify declined"; fi
     printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
       "$id" "${type:--}" "${status:--}" "${phase:--}" "${deps:--}" "$done" "$total" "$open" "$title" "$(basename "$d")" \
       "$sclaim" "${tnote:--}"
@@ -439,6 +442,7 @@ next_up() {
       for (i = 1; i <= NR; i++) {
         k = id[i]
         if (k in blockedby) printf "  %-4s waiting on%s\n", k, blockedby[k]
+        else if (st[k] == "blocked" && tnote[k] == "verify declined") printf "  %-4s blocked: verification declined; resume with /jsdd:plan %s\n", k, k
         else if (st[k] == "blocked") printf "  %-4s blocked (see spec)\n", k
       }
     }'

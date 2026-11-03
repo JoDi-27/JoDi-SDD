@@ -118,6 +118,15 @@ crs() { tr -cd '\r' <"$1" | wc -c | tr -d ' '; }
 grep -q 'T2.*checked: smoke looked' "$dir/tasks.md" || fail "done --manual did not record the note"
 has "$("$jsdd" status)" '| 2/2 |' || fail "status did not count the ticks"
 
+step "blocked by a declined verification"
+sed 's/^status: planned/status: blocked/' "$spec" >"$spec.tmp" && mv "$spec.tmp" "$spec"
+printf '%s\n' '# Verify report' '' '**Decision:** declined (smoke, 2026-11-03)' >"$dir/verify-report.md"
+to_crlf "$dir/verify-report.md"
+has "$("$jsdd" next)" 'resume with /jsdd:plan 003' || fail "next did not offer to resume the blocked verification: $("$jsdd" next)"
+rm "$dir/verify-report.md"
+has "$("$jsdd" next)" '003  blocked (see spec)' || fail "next showed a resume hint without a declined report"
+sed 's/^status: blocked/status: in-progress/' "$spec" >"$spec.tmp" && mv "$spec.tmp" "$spec"
+
 step "commit-message hook"
 cwd=$(str "$(native "$proj")")
 commit() { printf '{"session_id":"smoke","cwd":%s,"tool_name":"Bash","tool_input":{"command":%s}}' "$cwd" "$(str "$1")"; }

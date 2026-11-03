@@ -44,18 +44,22 @@ Features, spikes, and baselines take different routes. A feature is specified, p
 flowchart LR
   draft -->|"/jsdd:plan<br/>(approves spec)"| approved --> planned
   planned -->|"/jsdd:implement<br/>(approves plan)"| inprogress[in-progress]
-  inprogress -->|"/jsdd:verify<br/>(all AC pass)"| done
-  inprogress -.->|AC fails: new tasks| inprogress
+  inprogress -->|"/jsdd:verify<br/>(converged)"| done
+  inprogress -.->|"/jsdd:verify<br/>(gaps, you approve)"| approved
+  inprogress -.->|"/jsdd:verify<br/>(gaps, you decline)"| blocked
+  blocked -.->|"/jsdd:plan<br/>(resume: amendment)"| planned
 ```
+
+`/jsdd:verify` checks each acceptance criterion and also reads the code against each requirement, looking for requirements that are missing or only partly built, behavior no requirement asks for, and drift from the plan. It writes what it finds to `verify-report.md` in the spec folder, with a numbered proposed action for each gap (G1, G2, …), and asks whether to fix them. Verify changes no tasks, plan, or spec. If you approve, the spec goes back to `approved`, and `/jsdd:plan` plans the gaps as an **amendment**: a numbered section of the plan's Amendments (A1, A2, …) saying what each gap became, and follow-up tasks in `tasks.md` under `### A<n> · Follow-up from verify round <r>`, each naming its gap. The reviewer checks the amendment, then `/jsdd:implement` builds it and `/jsdd:verify` checks again. If you decline, only the report is kept and the spec is `blocked`. It stays blocked until you run `/jsdd:plan <ID>` (your approval to fix the gaps after all) or drop it.
 
 | Status | Meaning | Set by |
 | --- | --- | --- |
 | `draft` | Spec written, may still have open questions | `/jsdd:specify` |
-| `approved` | Spec reviewed; no open questions | `/jsdd:plan` (running it is the approval) |
-| `planned` | Plan and tasks written | `/jsdd:plan` |
+| `approved` | Spec reviewed; no open questions. Also: verification gaps you approved, waiting to be planned | `/jsdd:plan` (running it is the approval); `/jsdd:verify` |
+| `planned` | Plan and tasks written, or an amendment's follow-up tasks | `/jsdd:plan` |
 | `in-progress` | Tasks being done | `/jsdd:implement` (running it is the approval of the plan) |
-| `done` | Every acceptance criterion verified with evidence | `/jsdd:verify` |
-| `blocked` | Cannot continue; the reason is in the spec's changelog | anyone |
+| `done` | Every acceptance criterion verified with evidence, and the code matches every requirement | `/jsdd:verify` |
+| `blocked` | Cannot continue; the reason is in the spec's changelog. After a declined verification, `verify-report.md` holds the gaps and `/jsdd:plan` resumes it | anyone; `/jsdd:verify` when you decline its fixes |
 | `dropped` | Will not be done; the reason is in the spec's changelog | anyone |
 
 Each step stops for human review before the next one starts. The human gates are simply running the next command.
