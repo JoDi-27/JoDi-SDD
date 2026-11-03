@@ -49,9 +49,10 @@ Delete these comments once the section is filled in.
 ## Amendments
 
 <!--
-Added by /jsdd:plan when /jsdd:verify found gaps the user approved fixing. One subsection per amendment; the plan above
-stays as it was built, except Design changes, marked "(changed in A<n>)". Every gap in the report has a row, dropped
-ones included. The follow-up tasks are in tasks.md under "### A<n> · Follow-up from verify round <r>".
+Added by /jsdd:plan when /jsdd:verify found gaps the user approved fixing. One self-contained subsection per amendment:
+the plan above stays as it was built, except Design changes, marked "(changed in A<n>)", and the amendment carries its
+own Decisions, Constitution check, Test strategy, and Risks (leave out any it has nothing for). Every gap in the report
+has a row, dropped ones included. The follow-up tasks are in tasks.md under "### A<n> · Follow-up from verify round <r>".
 
 ### A1 · Verify round 1 (YYYY-MM-DD)
 
@@ -64,4 +65,23 @@ Source: verify-report.md round 1, approved by <who, date>.
 | G3 | Record a Deviation | Deviations row A1/G3 |
 | G4 | Move to BACKLOG.md | BACKLOG.md "Next": <item> |
 | G5 | <action> | dropped by <who> |
+
+#### Decisions
+
+| # | Decision | Alternatives | Why |
+| --- | --- | --- | --- |
+| A1-1 | G3: <the option the user chose> | <the other options> | <why, and who chose> |
+
+#### Constitution check
+
+| Article | How the amendment complies |
+| --- | --- |
+
+#### Test strategy
+
+| Acceptance criterion | Verified by |
+| --- | --- |
+| AC-2 | <new or changed test> |
+
+#### Risks
 -->
