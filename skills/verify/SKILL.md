@@ -1,6 +1,6 @@
 ---
 name: verify
-description: Verify a spec's acceptance criteria (or a spike's answers) with evidence, then close it and update PLAN.md and BACKLOG.md. Use when all of a spec's tasks are ticked, or when a baseline spec's current behavior is confirmed.
+description: Verify a spec's acceptance criteria (or a spike's answers) with evidence and check the code against its requirements, then close it and update PLAN.md and BACKLOG.md. Gaps go into a report for the user to approve, and /jsdd:plan turns approved gaps into tasks; declining blocks the spec. Use when all of a spec's tasks are ticked, or when a baseline spec's current behavior is confirmed.
 argument-hint: <spec ID>
 ---
 
@@ -12,7 +12,7 @@ You prove that the spec is met. You do not add features.
 
 ## 1. Gate
 
-- Open `specs/$ARGUMENTS-*/`. The status must be `in-progress`.
+- Open `specs/$ARGUMENTS-*/`. The status must be `in-progress`. If it is `blocked` with a `verify-report.md` whose Decision is `declined`, or `approved` with one whose Decision is `approved`, the gaps are waiting to be planned: suggest `/jsdd:plan <ID>` and stop.
 - Claim the spec: `jsdd claim <ID>`. If another session holds the spec or one of its tasks, stop and report who.
 - Every task must be ticked; for a spike, every goal question and question for the user, and the first deliverable (recommendation agreed). If not, list what is left and suggest `/jsdd:implement <ID>` (features) or `/jsdd:spike <ID>` (spikes).
 - A baseline (`type: baseline`) has no tasks: it is ready when its status is `in-progress` and it has no `[NEEDS CLARIFICATION` markers. If it is still `draft`, suggest `/jsdd:baseline <ID>`. Go to step 2c.
@@ -24,9 +24,23 @@ You prove that the spec is met. You do not add features.
 - For a manual check that needs the user (for example, a UI flow), ask them to do it and record what they report.
 - Fill one row of the Evidence table in `tasks.md` per AC: pass or fail, and concrete evidence (test name, command and its relevant output, or who checked what).
 - Also confirm: the full build and test suite pass, every requirement is covered by a passing AC, every requirement ID in the spec's `refs` is tagged on an R whose ACs pass, and the plan's Deviations reflect what was built. An ID in `refs` that the work only partly delivers is either split into a new row of `docs/requirements.md` (and the delivered part kept in `refs`) or removed from `refs`, with the user's agreement.
-- Compare with the reviewer's report. Where it says an AC is failed or unproven and you found it passing, look again: a test that passes without exercising the behavior does not prove the AC. Treat a disagreement you cannot settle as a failure, or ask the user. Report its other blocking findings to the user.
+- **Converge the code with the spec.** Passing tests are not enough: for each R, find the code that delivers it and check that it does what the R says, no more and no less (`delivered`, `partial`, `missing`, or `contradicted`, with `file:line`). Also look for behavior in the changed code that no R asks for, and for differences from the plan's Design and tasks that its Deviations do not record.
+- Compare with the reviewer's report. Where it says an AC is failed or unproven, or an R is not delivered, and you found otherwise, look again: a test that passes without exercising the behavior does not prove the AC. Treat a disagreement you cannot settle as a gap, or ask the user. Report its other blocking findings to the user.
 
-If any AC fails, do not close the spec. Add a fix task for each failure to `tasks.md`, keep `in-progress`, release the spec, report the failures, and suggest `/jsdd:implement <ID>`.
+Then go to step 2d.
+
+## 2d. Feature: report and ask
+
+Verify judges; it does not fix. Apart from the Evidence table, it changes nothing but `verify-report.md` and the spec's status and changelog: no tasks, no plan edits, no spec edits. `/jsdd:plan` turns the gaps into tasks.
+
+Write `verify-report.md` in the spec folder from `${CLAUDE_PLUGIN_ROOT}/templates/verify-report.md`. On a later round, overwrite the round's sections, bump the Round, and add a History row. Fill it from your checks and the reviewer's: the AC results, the R verdicts, unrequested behavior, plan drift, and one **proposed action** per gap, numbered G1, G2, … For a failed AC or an R that is not delivered, the action is usually a fix with a check. For unrequested behavior or drift, offer the other fixes too: change the spec to match the code (Article 4), record a Deviation, or move it to BACKLOG.md.
+
+If a gap was in the previous round and the tasks planned for it are now ticked, say so in the report: the spec or the check is likely wrong rather than the code, so propose a spec change rather than another fix.
+
+- **Converged** (every AC passes, every R is `delivered`, no unrequested behavior, no unrecorded drift): set Outcome `converged` and Decision `none needed`, and go to step 3.
+- **Gaps found:** show the user the report and ask whether to plan the fixes. They can approve all the actions, change or drop some (record that in the report), or stop.
+  - **Approved:** set Decision `approved (<by whom, date>)`. Set `status: approved` and add a changelog line: "Verification round <n> found gaps; fixes approved, see verify-report.md." Release the spec, run `jsdd status --write`, and suggest `/jsdd:plan <ID>`, which plans the fixes as an amendment.
+  - **Stop:** set Decision `declined (<by whom, date>)`. Set `status: blocked` and add a changelog line: "Blocked: verification round <n> found gaps; see verify-report.md." Release the spec and run `jsdd status --write`. Tell the user that the spec stays blocked until it is concluded: `/jsdd:plan <ID>` resumes it by planning the fixes (running it is the approval), or they can drop the spec (`status: dropped`, with the reason in its changelog).
 
 ## 2b. Spike: check the answers
 

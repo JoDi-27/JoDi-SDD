@@ -9,6 +9,8 @@ Rules:
 - Write the check as a command in backticks after "check:", which `jsdd done <ID> <Tn>` runs from the
   repository root, or as "check: manual: <what a person checks>" when no command can prove it.
 - Prefer test first: a task that adds behavior starts by adding the failing test for it.
+- Follow-up tasks that /jsdd:plan adds for gaps a verification found go after the last task, under
+  "### A<n> · Follow-up from verify round <r>", and name the gap they serve: → AC-2 (A1/G1).
 - Tick a task only with `jsdd done`, which ticks it only when its check passes. New work found along the way becomes a new task, not a silent extra.
 -->
 

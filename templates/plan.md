@@ -45,3 +45,23 @@ Delete these comments once the section is filled in.
 ## Deviations
 
 <!-- Filled in during implementation: what changed versus this plan, and why. -->
+
+## Amendments
+
+<!--
+Added by /jsdd:plan when /jsdd:verify found gaps the user approved fixing. One subsection per amendment; the plan above
+stays as it was built, except Design changes, marked "(changed in A<n>)". Every gap in the report has a row, dropped
+ones included. The follow-up tasks are in tasks.md under "### A<n> · Follow-up from verify round <r>".
+
+### A1 · Verify round 1 (YYYY-MM-DD)
+
+Source: verify-report.md round 1, approved by <who, date>.
+
+| Gap | Action | Became |
+| --- | --- | --- |
+| G1 | Fix the code: <what> | T9, T10 |
+| G2 | Change the spec: <which R or AC> | spec.md R3 reworded; T11 |
+| G3 | Record a Deviation | Deviations row A1/G3 |
+| G4 | Move to BACKLOG.md | BACKLOG.md "Next": <item> |
+| G5 | <action> | dropped by <who> |
+-->
