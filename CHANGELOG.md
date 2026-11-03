@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.6.0 (2026-11-03)
+
 - `/jsdd:verify` checks the code against the spec, not only the acceptance criteria' tests. The `sdd-reviewer` agent, and the verifying session, give each requirement a verdict (`delivered`, `partial`, `missing`, `contradicted`) with the code that delivers it. They also list behavior no requirement asks for and differences from the plan that its Deviations do not record. Each gap gets a proposed fix: a task with a check, a spec change, a Deviation, or a BACKLOG item.
 - **Behavior change:** `/jsdd:verify` no longer adds fix tasks. It only judges: it writes `verify-report.md` in the spec folder (template `templates/verify-report.md`), with a numbered proposed action per gap, shows it, and asks whether to fix the gaps. If you approve, the spec goes back to `approved`. If you decline, only the report is kept and the spec is `blocked`; `jsdd next` shows it as "verification declined".
 - `/jsdd:plan` has an amend mode for those gaps, which also resumes a blocked spec. It adds an amendment to the plan's new Amendments section (A1, A2, …) with one row per gap saying what it became: follow-up tasks, a spec change, a Deviation, or a BACKLOG item. The follow-up tasks go in `tasks.md` under `### A<n> · Follow-up from verify round <r>` and name the gap they serve. The reviewer checks the amendment in plan mode, and `/jsdd:implement` builds it as usual. The amendment is self-contained: it carries its own Decisions, Constitution check, Test strategy, and Risks, and the original plan stays as it was built.
