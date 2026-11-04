@@ -18,7 +18,7 @@ THEMES = {
                  teal_text="#3fb8a6", on_teal="#161b1a", ink="#eeeae3", muted="#9ba39f"),
 }
 
-W, H = 1000, 400
+W, H = 1000, 430
 MONO = "ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace"
 SANS = "Inter, system-ui, -apple-system, 'Segoe UI', sans-serif"
 
@@ -57,24 +57,24 @@ EDGES = {
 
 # Phases: caption, start node, steps of (edge, node reached)
 PHASES = [
-    ("The happy path. Each command is your approval of the step before it.", None,
+    ("Happy path", "Each command is your approval of the step before it.", None,
      [("specify", "draft"), ("plan", "planned"), ("implement", "inprog"), ("verify_done", "done")]),
-    ("Verify finds gaps and you approve the fixes: plan adds them as an amendment, and the loop runs again.", "inprog",
+    ("Verify finds gaps, you approve the fixes", "Plan adds them as an amendment, and the loop runs again.", "inprog",
      [("gaps_ok", "approved"), ("amend", "planned"), ("implement", "inprog"), ("verify_done", "done")]),
-    ("You decline the fixes: the spec is blocked until you plan them after all, or drop it by hand.", "inprog",
+    ("Verify finds gaps, you decline the fixes", "The spec is blocked until you plan them after all, or drop it by hand.", "inprog",
      [("gaps_no", "blocked"), ("drop", "dropped"), ("resume", "planned"), ("implement", "inprog"), ("verify_done", "done")]),
-    ("A fix changes the spec itself: back to draft, revise it with specify, then plan the rest.", "inprog",
+    ("A fix changes the spec itself", "Back to draft: revise it with specify, then plan the rest.", "inprog",
      [("spec_change", "draft"), ("respec", "planned"), ("implement", "inprog"), ("verify_done", "done")]),
 ]
 
-EDGE_T = 0.55      # edge draw time
-NODE_HOLD = 1.25   # time a node stays active before the next edge draws
-PHASE_IN = 0.6     # caption and start node appear before the first edge
-PHASE_HOLD = 2.4   # read the finished phase
-FADE = 0.3
+EDGE_T = 0.8       # edge draw time
+NODE_HOLD = 2.0    # time a node stays active before the next edge draws
+PHASE_IN = 1.4     # caption and start node appear before the first edge
+PHASE_HOLD = 4.0   # read the finished phase
+FADE = 0.4
 
 t = 0.0
-for cap, start, steps in PHASES:
+for title, cap, start, steps in PHASES:
     ph = dict(start=t)
     t += PHASE_IN
     ph["steps"] = []
@@ -84,8 +84,8 @@ for cap, start, steps in PHASES:
     t += PHASE_HOLD
     ph["end"] = t
     t += FADE
-    ph["cap"], ph["from"] = cap, start
-    PHASES[PHASES.index((cap, start, steps))] = ph
+    ph["title"], ph["cap"], ph["from"] = title, cap, start
+    PHASES[PHASES.index((title, cap, start, steps))] = ph
 CYCLE = round(t, 2)
 
 rules = []
@@ -180,7 +180,9 @@ def build(theme):
         a, b = ph["start"], ph["end"]
         parts = []
         # caption
-        parts.append(f'<text x="{W / 2}" y="{H - 22}" text-anchor="middle" class="cap">{escape(ph["cap"])}</text>')
+        parts.append(f'<line x1="{W / 2 - 14}" y1="{H - 64}" x2="{W / 2 + 14}" y2="{H - 64}" stroke="{c["teal"]}" stroke-width="2"/>')
+        parts.append(f'<text x="{W / 2}" y="{H - 44}" text-anchor="middle" class="ttl">{escape(ph["title"].upper())}</text>')
+        parts.append(f'<text x="{W / 2}" y="{H - 20}" text-anchor="middle" class="cap">{escape(ph["cap"])}</text>')
         # start node active until the first edge reaches its node
         node_wins = {}  # node -> list of (state, a, b)
         if ph["from"]:
@@ -230,7 +232,8 @@ text {{ font-family: {SANS}; }}
 .lbl {{ font-size: 14px; font-weight: 500; letter-spacing: .02em; }}
 .el {{ font-family: {MONO}; font-size: 13px; }}
 .it {{ font-family: {SANS}; font-style: italic; }}
-.cap {{ font-size: 14px; fill: {c["ink"]}; }}
+.ttl {{ font-size: 13px; font-weight: 700; letter-spacing: .14em; fill: {c["teal_text"]}; }}
+.cap {{ font-size: 17px; font-weight: 500; fill: {c["ink"]}; }}
 .o {{ fill: {c["muted"]}; }} .i {{ fill: {c["ink"]}; }} .t {{ fill: {c["teal_text"]}; font-weight: 600; }}
 .base {{ opacity: .55; }}
 {chr(10).join(rules)}
