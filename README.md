@@ -189,7 +189,7 @@ claude plugin uninstall jsdd@jodi-sdd --scope project
 
 ## Going further
 
-- [GLOSSARY.md](GLOSSARY.md): every term the kit uses, in reading order.
+- [GLOSSARY.md](GLOSSARY.md): every term the kit uses, one line each.
 - [starters/specs/README.md](starters/specs/README.md): the full workflow, including every spec status and what moves a spec between them, spikes, baselines, IDs, file formats, and the commit-message format. `/jsdd:init` copies it into your project as `specs/README.md`.
 - [docs/comparison.md](docs/comparison.md): how JoDi-SDD differs from Spec Kit, and what you give up.
 - [ROADMAP.md](ROADMAP.md): feature ideas drawn from other SDD frameworks, open for discussion.
