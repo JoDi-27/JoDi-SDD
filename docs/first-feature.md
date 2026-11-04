@@ -55,25 +55,12 @@ Next up:
 
 ## What verify can do to a spec
 
-A feature spec moves through these statuses. Each arrow names the `/jsdd:` command that moves the spec, in bold, and the outcome, in italics. Running a command is your approval of the step before.
+A feature spec moves through these statuses. The animation walks the happy path first, then each thing verify can do. Commands are in teal, outcomes in italics, and running a command is your approval of the step before.
 
-```mermaid
-stateDiagram-v2
-  [*] --> draft: <b>specify</b>
-  draft --> planned: <b>plan</b>
-  planned --> in_progress: <b>implement</b>
-  in_progress --> done: <b>verify</b><br/><i>converged</i>
-  in_progress --> approved: <b>verify</b><br/><i>gaps approved</i>
-  in_progress --> blocked: <b>verify</b><br/><i>gaps declined</i>
-  in_progress --> draft: <b>verify</b><br/><i>spec change approved</i>
-  draft --> planned: <b>specify</b>, then <b>plan</b><br/><i>amendment</i>
-  approved --> planned: <b>plan</b><br/><i>amendment</i>
-  blocked --> planned: <b>plan</b><br/><i>amendment</i>
-  blocked --> dropped: <i>dropped by hand</i>
-  done --> [*]
-  dropped --> [*]
-  in_progress: in-progress
-```
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="../.github/assets/lifecycle-dark.svg">
+  <img src="../.github/assets/lifecycle-light.svg" alt="The spec lifecycle. The happy path runs draft, planned, in-progress, done, one command per step. Then each thing verify can do: gaps approved sends the spec to approved and plan adds an amendment; gaps declined blocks it until plan resumes it or it is dropped; a spec change sends it back to draft for specify, then plan." width="100%">
+</picture>
 
 - **Converged:** every acceptance criterion passes with evidence, and the code does what each requirement says, with nothing extra and no unrecorded drift from the plan. The spec is `done`.
 - **Gaps:** verify only judges. It writes `verify-report.md` in the spec folder, with a numbered proposed action for each gap (G1, G2, …), and asks whether to fix them. Approve, and the spec goes to `approved`; `/jsdd:plan` then adds the fixes to the plan as a numbered amendment (A1, A2, …) with follow-up tasks, which the reviewer checks and `/jsdd:implement` builds as usual.
