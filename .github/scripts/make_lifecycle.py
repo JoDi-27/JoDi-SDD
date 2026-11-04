@@ -142,6 +142,20 @@ def node(k, c, state):
             f'<text x="{cx}" y="{cy + 5}" text-anchor="middle" class="lbl i">{label}</text>')
 
 
+def chevron(d, size=7.0, spread=0.5):
+    """An open arrowhead at the end of path d, as path commands: from one wing to the tip to the other wing."""
+    import math, re
+    nums = [float(v) for v in re.findall(r"-?\d+(?:\.\d+)?", d)]
+    cmds = re.findall(r"[MLC]", d)
+    tip = (nums[-2], nums[-1])
+    # the end tangent: from the last control point (C) or the previous point (L) to the tip
+    prev = (nums[-4], nums[-3])
+    ang = math.atan2(tip[1] - prev[1], tip[0] - prev[0])
+    w1 = (tip[0] - size * math.cos(ang - spread), tip[1] - size * math.sin(ang - spread))
+    w2 = (tip[0] - size * math.cos(ang + spread), tip[1] - size * math.sin(ang + spread))
+    return f" M {w1[0]:.1f} {w1[1]:.1f} L {tip[0]:.1f} {tip[1]:.1f} L {w2[0]:.1f} {w2[1]:.1f}"
+
+
 def edge_path(k, c, marker, colour, width=1.5, extra=""):
     d = EDGES[k]["d"].format(**geom())
     return f'<path d="{d}" fill="none" stroke="{colour}" stroke-width="{width}" marker-end="url(#{marker})" {extra}/>'
@@ -194,10 +208,8 @@ def build(theme):
             draw = anim([(0, f"stroke-dashoffset: {length}; opacity: 0"), (ts, f"stroke-dashoffset: {length}; opacity: 1"),
                          (ts + EDGE_T, "stroke-dashoffset: 0; opacity: 1"), (b, "stroke-dashoffset: 0; opacity: 1"),
                          (b + FADE, "stroke-dashoffset: 0; opacity: 0"), (CYCLE, f"stroke-dashoffset: {length}; opacity: 0")])
-            parts.append(f'<g class="{draw}" style="stroke-dasharray: {length}"><path d="{d}" fill="none" stroke="{c["teal"]}" stroke-width="2"/></g>')
-            # the arrowhead is a marker, which does not follow the dash reveal, so it fades in on its own when the line arrives
-            head = windows([(ts + EDGE_T - 0.1, b)], fade=0.15)
-            parts.append(f'<g class="{head}"><path d="{d}" fill="none" stroke="none" marker-end="url(#arr-teal)"/></g>')
+            # the arrowhead is the path's last segment, a chevron, so the dash reveal draws it right after the line arrives
+            parts.append(f'<g class="{draw}" style="stroke-dasharray: {length}"><path d="{d + chevron(d)}" fill="none" stroke="{c["teal"]}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></g>')
             lbl = windows([(ts + EDGE_T * 0.6, b)])
             parts.append(f'<g class="{lbl}"><rect x="0" y="0" width="0" height="0"/>{edge_label(e, "t", "i")}</g>')
             reached = ts + EDGE_T
