@@ -1,6 +1,6 @@
 # Contributing
 
-Issues and pull requests are welcome. For anything bigger than a fix, open an issue first so we can agree on the shape.
+Issues and pull requests are welcome. For anything bigger than a fix, open an issue first so we can agree on the shape. [ROADMAP.md](ROADMAP.md) lists feature ideas that are open for discussion.
 
 ## Trying changes
 
