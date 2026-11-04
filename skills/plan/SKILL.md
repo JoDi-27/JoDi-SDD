@@ -24,7 +24,7 @@ You write the HOW for one spec. You do not implement.
 ## 2. Load context
 
 - Read `specs/constitution.md` and the spec.
-- Read the code, configuration, and specs that the work touches. Read `plan.md` of the specs it depends on.
+- Read the code, configuration, and specs that the work touches. Read `plan.md` of the specs it depends on, and the capability document entries (`docs/capabilities/<group>.md`) of the rows in the spec's Capability changes: they say how the area works now, which the design must keep unless the spec changes it.
 - Check current documentation for every library, SDK, or tool the plan relies on, and note the versions (Article 6). When there are three or more, launch one `spike-researcher` agent per library in a single message, each with a focus such as "current stable version of <library>, and the documented way to <what the plan needs>; cite the docs page and date". Use its findings, not memory, for the versions.
 
 ## 3. Write the plan and tasks

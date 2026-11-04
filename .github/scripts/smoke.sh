@@ -165,4 +165,29 @@ has "$out" "still holds jsdd claims: 001" || fail "the stop hook did not warn ab
 out=$(hook stop-claims "$other")
 [ -z "$out" ] || fail "the stop hook warned another session: $out"
 
+step "capabilities"
+# 003 added FR-AUTH-01 and is done; 001 is about to change it.
+sed 's/^| FR-XXX-NN | adds |/| FR-AUTH-01 | modifies |/' specs/001-*/spec.md >"$tmp/s" && mv "$tmp/s" specs/001-password-reset-by-email/spec.md
+sed 's/^| FR-XXX-NN | adds |/| FR-AUTH-01 | adds |/; s/^status: in-progress/status: done/' "$spec" >"$spec.tmp" && mv "$spec.tmp" "$spec"
+out=$("$jsdd" capabilities)
+has "$out" 'not merged: 003 adds FR-AUTH-01' || fail "capabilities did not flag an unmerged done spec: $out"
+if "$jsdd" capabilities --check >/dev/null; then fail "capabilities --check passed with an unmerged spec"; fi
+mkdir -p docs/capabilities
+printf '%s\n' '# Accounts (FR-AUTH)' '' '<!-- ## FR-AUTH-07 · in a comment -->' '## FR-AUTH-01 · Sign in' '' 'Last changed: 003 (2026-11-04)' '' \
+  '- When a user signs in, the system shall ...' '' '## History' '' '| Date | Spec | Row | Change |' '| --- | --- | --- | --- |' \
+  '| 2026-11-04 | 003 | FR-AUTH-01 | adds |' >docs/capabilities/auth.md
+to_crlf docs/capabilities/auth.md
+out=$("$jsdd" capabilities --check FR-AUTH) || fail "capabilities --check failed after the merge: $out"
+has "$out" '| FR-AUTH-01 | auth.md | 003 | 001 modifies (draft) |' || fail "capabilities misread the entry or the pending change: $out"
+printf '%s\r\n' '## FR-AUTH-09 · Gone' >>docs/capabilities/auth.md
+has "$("$jsdd" capabilities)" 'FR-AUTH-09: entry in auth.md has no row' || fail "capabilities did not flag an entry with no row"
+# A baseline has no table: each row in its refs is an "adds".
+b=$("$jsdd" new baseline "Accounts: current behavior")
+sed 's/^refs: \[\]/refs: ["FR-AUTH-01"]/; s/^status: draft/status: done/' "$b" >"$b.tmp" && mv "$b.tmp" "$b"
+has "$("$jsdd" capabilities FR-AUTH-01)" 'not merged: 004 adds FR-AUTH-01' || fail "capabilities did not flag an unmerged baseline: $("$jsdd" capabilities FR-AUTH-01)"
+awk '{ print } /\| 003 \| FR-AUTH-01 \| adds \|/ { printf "| 2026-11-04 | 004 | FR-AUTH-01 | adds |\r\n" }' docs/capabilities/auth.md >"$tmp/a" && mv "$tmp/a" docs/capabilities/auth.md
+"$jsdd" capabilities --check FR-AUTH-01 >/dev/null || fail "capabilities --check failed after the baseline was merged: $("$jsdd" capabilities FR-AUTH-01)"
+rm -r docs/capabilities
+sed 's/^status: done/status: in-progress/' "$spec" >"$spec.tmp" && mv "$spec.tmp" "$spec"
+
 printf '\nsmoke: ok\n'

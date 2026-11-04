@@ -60,6 +60,21 @@ Numbered, one behavior each, in EARS form:
 
 - **AC-1** Given ..., when ..., then ...
 
+## Capability changes
+
+<!--
+What this spec does to the capability documents in docs/capabilities/ (one per requirement group, for example
+docs/capabilities/auth.md for FR-AUTH). One line per row of docs/requirements.md that an R is tagged with:
+  adds      the row has no entry in its capability document yet
+  modifies  the row has an entry, and this spec changes the behavior it describes
+  removes   the behavior goes away; say why under Scope, and set the row's priority to W in docs/requirements.md
+/jsdd:verify merges these lines into the capability documents when it closes the spec.
+-->
+
+| Row | Change | Requirements |
+| --- | --- | --- |
+| FR-XXX-NN | adds | R1 |
+
 ## Open questions
 
 <!-- Resolved questions stay here with their answer: "Q: ... A: ... (decided by, date)". -->

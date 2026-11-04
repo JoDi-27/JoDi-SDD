@@ -8,7 +8,7 @@ Already covered, so not listed: a constitution, EARS requirements, `NEEDS CLARIF
 
 ### 1. Living capability specs
 
-*From OpenSpec.*
+*From OpenSpec.* **Built:** see `docs/capabilities/` and `jsdd capabilities` in [CHANGELOG.md](CHANGELOG.md) (Unreleased).
 
 **Gap:** each spec is one change. Once a spec is `done`, its detailed behavior stays in its own folder, and `docs/requirements.md` holds only one line per requirement. Nothing says how an area works now without reading every spec that touched it.
 

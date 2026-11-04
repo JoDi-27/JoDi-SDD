@@ -8,6 +8,7 @@ A lightweight spec-driven development (SDD) kit. Every piece of work, spike, fea
 | --- | --- | --- |
 | Product intent | `docs/intent.md` | What we are building and why, long term |
 | Requirements | `docs/requirements.md` | Every functional and non-functional requirement of the product, with IDs (`FR-AUTH-05`, `NFR-SEC-03`) and priorities |
+| Capabilities | `docs/capabilities/<group>.md` | How one area works now, in detail: each requirement row's current behavior, merged in from the specs that changed it |
 | Decisions | `docs/decisions.md` | The register: settled choices (`DEC-nn`) and open ones (`ND-nn`), with options and reasoning |
 | Roadmap | `PLAN.md`, `BACKLOG.md` | Which phase we are in, which requirements each phase delivers, which spikes are open, and a one-line item per open decision that points to its row in `docs/decisions.md` |
 | Rules | `specs/constitution.md` | What every design must respect |
@@ -24,6 +25,7 @@ A spec usually delivers one checklist item of `PLAN.md` (a spike, a baseline, a 
 - A spec's `refs` list the requirement IDs it covers, and each of its requirements is tagged with the rows it refines: `**R1** (FR-AUTH-05) When …`. Its acceptance criteria make those rows testable.
 - `requirements.md` stays the source of truth. When a spec changes what a row means, or finds behavior no row has, it edits or adds the row in the same change. It never gets a status column: progress comes from the specs.
 - Measurable NFRs (response times, delivery windows) become acceptance criteria in the spec that delivers them. NFRs that apply to everything are product articles in `specs/constitution.md`, checked in every plan.
+- A spec's **Capability changes** table says, per row, whether it `adds`, `modifies`, or `removes` behavior. When `/jsdd:verify` closes the spec, it merges those lines into the group's capability document (`docs/capabilities/auth.md` for `FR-AUTH`): one entry per row with its current behavior in EARS form, what proves it, and the spec that last changed it. `/jsdd:specify` and `/jsdd:plan` read the entries before changing an area, and a baseline, which needs no table, writes an area's first version: every row in its `refs` is added when it closes. A removed behavior keeps its row ID, with priority `W`. `jsdd capabilities` lists the entries and the live specs about to change them, and flags a done spec whose changes were never merged.
 - `jsdd coverage` joins the two: each requirement, its priority, and the specs that cover it with their status. A requirement is done once every spec that covers it is `done` (dropped specs aside). A live spec that changes a row puts it back in progress until that spec is done too.
 
 ```mermaid
@@ -178,6 +180,7 @@ jsdd done 004 AC-2                   # the same for a baseline's acceptance crit
 jsdd claims --prune                  # list claims, dropping the ones no longer needed
 jsdd coverage FR-AUTH                # requirements in a group, with the specs covering each
 jsdd coverage --phase 1 --priority M --missing   # Phase 1 Musts with no spec yet
+jsdd capabilities FR-AUTH            # rows with a capability entry, and live specs about to change them
 ```
 
 Progress is computed from the files: checkboxes in `tasks.md` (for a spike, the goal questions, questions for you, and deliverables in `spec.md`; for a baseline, its acceptance criteria), and the open questions count from the `[NEEDS CLARIFICATION: …]` markers in `spec.md` and `plan.md`. HTML comments are ignored, so template guidance never counts.

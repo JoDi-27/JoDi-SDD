@@ -56,6 +56,11 @@ Usage: jsdd <command>
                                 Requirements in docs/requirements.md and the specs whose
                                 refs cover them; --phase N scopes to the IDs and groups
                                 PLAN.md's Phase N names; --missing lists only uncovered ones
+  capabilities [--check] [ID or group ...]
+                                Rows with an entry in docs/capabilities/, the spec that last
+                                changed each, and live specs about to change them; lists done
+                                specs whose Capability changes are not merged. --check exits 1
+                                when there is a problem
 
 Claims stop parallel sessions from picking the same work. They live in the git
 common dir, so every worktree on this machine shares them, and are never committed.
@@ -726,6 +731,114 @@ cmd_coverage() {
     END { if (!shown) print "  (no requirements match)" }'
 }
 
+# --- capabilities ----------------------------------------------------------
+# A capability document, docs/capabilities/<group>.md, says how one
+# requirement group works now: one "## <row ID> · <text>" entry per row, with a
+# "Last changed: NNN" line, and a History table (date, spec, row, change). A
+# spec's "## Capability changes" table (row, adds|modifies|removes, Rs) is
+# merged into it by /jsdd:verify when the spec closes; this checks the merge.
+# A baseline adds every row in its refs.
+
+CAP_DIR="$ROOT/docs/capabilities"
+CAP_ID_RE='^N?FR-[A-Z0-9]+-[0-9]+[a-z]?$'
+
+# cap_changes: C, spec id, status, row, change for each Capability changes line.
+# A baseline has no table: each row in its refs is an "adds".
+cap_changes() {
+  local d spec r
+  for d in "$SPECS_DIR"/[0-9][0-9][0-9]-*/; do
+    spec="${d%/}/spec.md"
+    [ -f "$spec" ] || continue
+    if [ "$(fm "$spec" type)" = baseline ]; then
+      for r in $(fm "$spec" refs | grep -oE '(FR|NFR)-[A-Z0-9]+-[0-9]+[a-z]?' || true); do
+        printf 'C\t%s\t%s\t%s\tadds\n' "$(fm "$spec" id)" "$(fm "$spec" status)" "$r"
+      done
+      continue
+    fi
+    uncomment "$spec" | ID="$(fm "$spec" id)" ST="$(fm "$spec" status)" RE="$CAP_ID_RE" awk -F '|' '
+      /^## / { on = ($0 ~ /^## Capability changes/); next }
+      on && NF >= 4 {
+        row = $2; ch = tolower($3); gsub(/^ +| +$/, "", row); gsub(/^ +| +$/, "", ch)
+        if (row ~ ENVIRON["RE"]) printf "C\t%s\t%s\t%s\t%s\n", ENVIRON["ID"], ENVIRON["ST"], row, ch
+      }'
+  done
+}
+
+# cap_docs: E, row, last-changed spec, file for each entry, and H, row, spec,
+# change, file for each History row, of every capability document.
+cap_docs() {
+  local f
+  for f in "$CAP_DIR"/*.md; do
+    [ -f "$f" ] || continue
+    uncomment "$f" | F="$(basename "$f")" RE="$CAP_ID_RE" awk -F '|' '
+      function flush() { if (row != "") printf "E\t%s\t%s\t%s\n", row, (last == "" ? "-" : last), ENVIRON["F"]; row = "" }
+      /^## / {
+        flush(); hist = ($0 ~ /^## History/)
+        h = substr($0, 4); sub(/ .*/, "", h)
+        if (!hist && h ~ ENVIRON["RE"]) { row = h; last = "" }
+        next
+      }
+      row != "" && /^Last changed:/ { last = $0; sub(/^Last changed: */, "", last); sub(/[^0-9].*/, "", last) }
+      hist && NF >= 6 {
+        s = $3; r = $4; ch = tolower($5); gsub(/^ +| +$/, "", s); gsub(/^ +| +$/, "", r); gsub(/^ +| +$/, "", ch)
+        if (r ~ ENVIRON["RE"] && s ~ /^[0-9][0-9][0-9]$/) printf "H\t%s\t%s\t%s\t%s\n", r, s, ch, ENVIRON["F"]
+      }
+      END { flush() }'
+  done
+}
+
+cmd_capabilities() {
+  local scope="" check="" out
+  while [ $# -gt 0 ]; do
+    case $1 in
+      --check) check=1; shift ;;
+      -*) echo "unknown option '$1'" >&2; usage >&2; exit 1 ;;
+      *) scope="$scope $1"; shift ;;
+    esac
+  done
+  [ -f "$REQUIREMENTS" ] || { echo "no requirements file at $REQUIREMENTS (set SDD_REQUIREMENTS)" >&2; exit 1; }
+  out=$({
+    coverage_rows | awk -F '\t' '{ printf "R\t%s\t%s\n", $1, $5 }'
+    cap_changes
+    cap_docs
+  } | SCOPE="${scope# }" awk -F '\t' '
+    # A scope entry is an exact ID or a group prefix such as FR-SES.
+    function inscope(id,   n, s, i) {
+      if (ENVIRON["SCOPE"] == "") return 1
+      n = split(ENVIRON["SCOPE"], s, " ")
+      for (i = 1; i <= n; i++) if (id == s[i] || index(id, s[i] "-") == 1) return 1
+      return 0
+    }
+    !inscope($1 == "C" ? $4 : $2) { next }
+    $1 == "R" { rows[++nr] = $2; isrow[$2] = 1; text[$2] = $3 }
+    $1 == "C" {
+      if ($3 == "dropped") next
+      if ($3 == "done") { donech[++nd] = $2 "\t" $4 "\t" $5 }
+      else pending[$4] = pending[$4] (pending[$4] ? ", " : "") $2 " " $5 " (" $3 ")"
+    }
+    $1 == "E" { entry[$2] = $4; last[$2] = $3; if (!($2 in isrow)) orphan[++no] = $2 "\t" $4 }
+    $1 == "H" { merged[$3 "\t" $2] = 1; lastch[$2] = $4 }
+    END {
+      for (i = 1; i <= nr; i++) {
+        r = rows[i]
+        if (!(r in entry) && !(r in pending)) continue
+        if (!shown++) { print "| Requirement | Entry | Last changed | Pending changes |"; print "| --- | --- | --- | --- |" }
+        printf "| %s | %s | %s | %s |\n", r, (r in entry ? entry[r] : ""), (r in entry ? last[r] : ""), pending[r]
+      }
+      if (!shown) print "  (no capability entries or pending changes)"
+      for (i = 1; i <= nd; i++) {
+        split(donech[i], c, "\t")
+        if (!((c[1] "\t" c[2]) in merged)) problems[++np] = "not merged: " c[1] " " c[3] " " c[2] " (no History row)"
+      }
+      for (r in entry) if (lastch[r] == "removes") problems[++np] = r ": removed, but its entry is still in " entry[r]
+      for (i = 1; i <= no; i++) { split(orphan[i], c, "\t"); problems[++np] = c[1] ": entry in " c[2] " has no row in the requirements" }
+      if (np) { print ""; print "Problems:"; for (i = 1; i <= np; i++) print "  " problems[i] }
+    }')
+  printf '%s\n' "$out"
+  if [ -n "$check" ] && printf '%s\n' "$out" | grep -q '^Problems:'; then exit 1; fi
+  return 0
+}
+
 cmd_status() {
   local out claims
   out=$(board)
@@ -979,6 +1092,7 @@ case "${1:-}" in
   done) shift; cmd_done "$@" ;;
   claims) shift; cmd_claims "$@" ;;
   coverage) shift; cmd_coverage "$@" ;;
+  capabilities) shift; cmd_capabilities "$@" ;;
   -h|--help|help|"") usage ;;
   *) echo "unknown command '$1'" >&2; usage >&2; exit 1 ;;
 esac

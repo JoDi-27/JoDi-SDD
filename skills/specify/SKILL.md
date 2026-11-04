@@ -15,6 +15,7 @@ You write the WHAT and WHY of one slice of work. You do not plan or implement.
 - Read `specs/README.md` (the workflow) and `specs/constitution.md`.
 - Read the parts of `PLAN.md`, `BACKLOG.md`, and `docs/intent.md` that relate to the input. Use grep on headings rather than reading the intent doc whole.
 - Find the requirements the work covers in `docs/requirements.md`: the IDs and groups after the `·` on the PLAN.md item, or a search by topic. Run `jsdd coverage <IDs or groups>` to see which already have a spec, and do not take one that another live spec covers unless the user agrees to split it.
+- Read how the area works now: `docs/capabilities/<group>.md` for each requirement group the work touches (`auth.md` for `FR-AUTH`), the entries of the rows it changes. Run `jsdd capabilities <groups>` to see which rows have an entry and which other live specs are about to change them.
 - Run `jsdd status` to see existing specs, so you can set `depends_on` and avoid duplicates.
 - **Existing code.** If the work changes code that already exists in an area with no rows in `docs/requirements.md`, suggest `/jsdd:baseline <area>` first: it records how the area works today, so this spec can cite the rows it changes and the existing tests guard against regressions. The user may skip it for a small change; then this spec adds the rows it needs. When the area has a baseline that is not `done`, add it to `depends_on`.
 
@@ -35,6 +36,7 @@ Fill in every section of the template and delete the guidance comments.
 - `docs/requirements.md` is the product-level list; the spec makes its rows testable. Tag each R with the requirement IDs it refines, as `**R1** (FR-AUTH-05) When …`. Every ID in `refs` is tagged on at least one R; an R with no ID is allowed only for behavior the listed rows imply.
 - A spec that changes behavior a baseline recorded cites the same row and tags the R that changes it, for example `**R2** (FR-AUTH-01) When a reset token is valid, …`. Reword the row in `docs/requirements.md` to the new behavior in the same change. Until this spec is done, `jsdd coverage` shows the row as in progress again.
 - Where a row is too vague to build from, add a `[NEEDS CLARIFICATION]` marker rather than guessing. When the user's answer changes what a row means, or adds behavior no row has, edit `docs/requirements.md` in the same change: reword the row, or add a new row with the next ID in its group and a priority (Article 4).
+- **Capability changes.** One line per row an R is tagged with: `adds` when the row has no entry in its capability document, `modifies` when it has one and the spec changes that behavior (write the R from the entry, so nothing it already says is lost by accident), `removes` when the behavior goes away. A row whose done baseline `jsdd capabilities` lists as not merged also counts as having an entry: read the baseline's Rs instead, and write `modifies`. A removal says why under Scope, and its row in `docs/requirements.md` keeps its ID but gets priority `W` and "(removed by <ID>)" at the end of its text. When another live spec also changes the row, say so to the user and set `depends_on` if one must close first.
 - A measurable NFR the spec delivers (for example a response time) becomes an acceptance criterion. NFRs that apply to everything are product articles, checked in the plan, and need no R.
 - Never guess. Anything unknown becomes `[NEEDS CLARIFICATION: <specific question>]` in the section where it matters.
 
@@ -43,7 +45,7 @@ Fill in every section of the template and delete the guidance comments.
 A verification found gaps and the user chose to change the spec for some of them. The plan and tasks were already built from the old spec; `/jsdd:plan` will amend them after you.
 
 - Read `verify-report.md`. Revise only for the kept gaps whose action (or chosen option) is a spec change; leave the others for `/jsdd:plan`.
-- For each, rework the R or AC with the user, following the rules in step 3. When a gap leaves the behavior itself unclear, add a `[NEEDS CLARIFICATION]` marker and ask it in step 4.
+- For each, rework the R or AC with the user, following the rules in step 3, and update the Capability changes lines it affects. When a gap leaves the behavior itself unclear, add a `[NEEDS CLARIFICATION]` marker and ask it in step 4.
 - Add one changelog line per gap that names the round and gap: "Verify round 2/G3: R3 reworded to match the code." Do not edit the report, the plan, or the tasks.
 
 ## 4. Clarify
@@ -55,4 +57,4 @@ A verification found gaps and the user chose to change the spec for some of them
 ## 5. Finish
 
 - Keep `status: draft`. Release the spec (`jsdd release <ID>`) and run `jsdd status --write`.
-- Report in a few lines: the spec path, the requirement IDs it covers, any rows of `docs/requirements.md` you changed or added, the number of open questions left, and the next step: the user reviews the spec, then runs `/jsdd:plan <ID>` (after a verification, it plans the rest of the gaps as an amendment).
+- Report in a few lines: the spec path, the requirement IDs it covers, any rows of `docs/requirements.md` you changed or added, the rows it adds, modifies, or removes in the capability documents, the number of open questions left, and the next step: the user reviews the spec, then runs `/jsdd:plan <ID>` (after a verification, it plans the rest of the gaps as an amendment).
