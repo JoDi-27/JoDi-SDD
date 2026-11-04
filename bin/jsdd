@@ -408,6 +408,7 @@ board() {
     }
     {
       prog = ($7 > 0) ? $6 "/" $7 : "-"
+      if ($12 == "all tasks done") { prog = prog " ready to verify"; ready[$3]++ }
       t = $9; gsub(/\|/, "\\|", t)   # a | would end the table cell
       printf "| %s | %s | %s | %s | %s | %s | %s | [%s](%s/) |\n", $1, $2, $3, $4, prog, ($8 > 0 ? $8 : ""), ($5 == "-" ? "" : $5), t, $10
       n[$3]++; total++
@@ -416,7 +417,11 @@ board() {
       if (!total) { print "| | | | | | | | No specs yet |" ; exit }
       printf "\n%d specs:", total
       split("draft approved planned in-progress done blocked dropped", order, " ")
-      for (i = 1; i <= 7; i++) if (n[order[i]]) printf " %s %d,", order[i], n[order[i]]
+      for (i = 1; i <= 7; i++) if (n[order[i]]) {
+        printf " %s %d", order[i], n[order[i]]
+        if (ready[order[i]]) printf " (%d ready to verify)", ready[order[i]]
+        printf ","
+      }
       print ""
     }' | sed -e '$ s/,$//'
 }
@@ -571,6 +576,9 @@ cmd_done() {
     { printf "%s%s\n", $0, (crlf ? "\r" : "") }' "$f" > "$tmp" && mv "$tmp" "$f"
   [ -n "$ac" ] || touch "$CLAIMS/$id-$t/done"
   if [ -n "$cmd" ]; then echo "check passed; ticked $id $t"; else echo "ticked $id $t (manual check recorded)"; fi
+  if [ -z "$ac" ] && [ "$(task_note "$id" "$f")" = "all tasks done" ]; then
+    echo "every task of $id is ticked; next: /jsdd:verify $id"
+  fi
 }
 
 # list_claims [all]: active claims, or with "all" also done markers.

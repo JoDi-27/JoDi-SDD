@@ -108,15 +108,19 @@ step "claim next, done"
 export CLAUDE_CODE_SESSION_ID=smoke
 [ "$("$jsdd" claim 003 next)" = T1 ] || fail "claim next did not pick T1"
 if "$jsdd" claim 003 T2 2>/dev/null; then fail "T2 was claimed before T1 was done"; fi
-"$jsdd" done 003 T1
+out=$("$jsdd" done 003 T1)
+if has "$out" '/jsdd:verify'; then fail "done pointed to verify with T2 still open: $out"; fi
 grep -q '^- \[x\] \*\*T1\*\*' "$dir/tasks.md" || fail "done did not tick T1"
 # (Count CRs with tr: grep in Git Bash drops them before matching.)
 crs() { tr -cd '\r' <"$1" | wc -c | tr -d ' '; }
 [ "$(crs "$dir/tasks.md")" = 4 ] || fail "done changed the CRLF line endings: $(crs "$dir/tasks.md") CRs in 4 lines: $(od -c "$dir/tasks.md" | head -4)"
 "$jsdd" claim 003 T2
-"$jsdd" done 003 T2 --manual "smoke looked"
+out=$("$jsdd" done 003 T2 --manual "smoke looked")
 grep -q 'T2.*checked: smoke looked' "$dir/tasks.md" || fail "done --manual did not record the note"
-has "$("$jsdd" status)" '| 2/2 |' || fail "status did not count the ticks"
+has "$out" 'next: /jsdd:verify 003' || fail "done on the last task did not point to verify: $out"
+out=$("$jsdd" status)
+has "$out" '| 2/2 ready to verify |' || fail "status did not mark the spec ready to verify: $out"
+has "$out" 'planned 1 (1 ready to verify)' || fail "status summary did not count the ready spec: $out"
 
 step "blocked by a declined verification"
 sed 's/^status: planned/status: blocked/' "$spec" >"$spec.tmp" && mv "$spec.tmp" "$spec"
