@@ -156,9 +156,10 @@ def chevron(d, size=7.0, spread=0.5):
     return f" M {w1[0]:.1f} {w1[1]:.1f} L {tip[0]:.1f} {tip[1]:.1f} L {w2[0]:.1f} {w2[1]:.1f}"
 
 
-def edge_path(k, c, marker, colour, width=1.5, extra=""):
+def edge_path(k, c, colour, width=1.5):
+    """An edge with the same chevron the lit copy draws, so the lit copy covers it exactly."""
     d = EDGES[k]["d"].format(**geom())
-    return f'<path d="{d}" fill="none" stroke="{colour}" stroke-width="{width}" marker-end="url(#{marker})" {extra}/>'
+    return f'<path d="{d + chevron(d)}" fill="none" stroke="{colour}" stroke-width="{width}" stroke-linecap="round" stroke-linejoin="round"/>'
 
 
 def edge_label(k, cls_cmd, cls_out):
@@ -183,7 +184,7 @@ def build(theme):
     # Base layer: the whole graph, faint
     base = []
     for k in EDGES:
-        base.append(edge_path(k, c, "arr-stone", c["stone"]))
+        base.append(edge_path(k, c, c["stone"]))
         base.append(edge_label(k, "o", "o"))
     for k in NODES:
         base.append(node(k, c, "idle"))
@@ -266,8 +267,6 @@ text {{ font-family: {SANS}; }}
     <clipPath id="card"><rect x="0.5" y="0.5" width="{W - 1}" height="{H - 1}" rx="10"/></clipPath>
     <linearGradient id="g" x1="0" x2="1" y1="0" y2="0"><stop offset=".45" stop-color="#fff" stop-opacity="0"/><stop offset=".9" stop-color="#fff"/></linearGradient>
     <mask id="fade" maskUnits="userSpaceOnUse" x="0" y="0" width="{W}" height="{H}"><rect width="{W}" height="{H}" fill="url(#g)"/></mask>
-    <marker id="arr-stone" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="{c["stone"]}"/></marker>
-    <marker id="arr-teal" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="{c["teal"]}"/></marker>
   </defs>
   <style>{style}</style>
   <rect x="0.5" y="0.5" width="{W - 1}" height="{H - 1}" rx="10" fill="{c["paper"]}"/>
