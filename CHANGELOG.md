@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- The README is rewritten for readers new to spec-driven development: it explains what SDD is, walks through a first feature with example spec and task lines, and says when the kit is and isn't a good fit, with an FAQ. Reference material moved out: the first-feature walkthrough and the existing-codebase guide to `docs/`, the Spec Kit comparison to `docs/comparison.md`, with an animated lifecycle diagram in the walkthrough (`.github/scripts/make_lifecycle.py`). New `GLOSSARY.md` defines every term the kit uses, linked from both READMEs.
+
 ## 0.7.0 (2026-11-04)
 
 - Living capability documents. Each requirement group gets `docs/capabilities/<group>.md` (`auth.md` for `FR-AUTH`), which says how that area works now: one entry per requirement row with its current behavior, what proves it, and the spec that last changed it. Template `templates/capability.md`.
