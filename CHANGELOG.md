@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.6.1 (2026-11-04)
+
 - **Behavior change:** spec changes from a verification go through `/jsdd:specify`, not the plan. The plan is derived from the spec, so an amendment no longer edits `spec.md`. When you approve a gap whose fix is a spec change, `/jsdd:verify` sets the spec back to `draft`. `/jsdd:specify <ID>` revises it with you and logs each change against its gap ("Verify round 2/G3: …"). `/jsdd:plan <ID>` then approves the revised spec and plans the rest of the gaps as an amendment, never a new plan. `jsdd next` points such a spec to `/jsdd:specify`.
 - `/jsdd:verify` stops the fix loop after two rounds. A gap on the same acceptance criterion or requirement as last round, whose planned fix is now built, gets only two options: change the spec, or drop the gap.
 
