@@ -125,7 +125,14 @@ to_crlf "$dir/verify-report.md"
 has "$("$jsdd" next)" 'resume with /jsdd:plan 003' || fail "next did not offer to resume the blocked verification: $("$jsdd" next)"
 rm "$dir/verify-report.md"
 has "$("$jsdd" next)" '003  blocked (see spec)' || fail "next showed a resume hint without a declined report"
-sed 's/^status: blocked/status: in-progress/' "$spec" >"$spec.tmp" && mv "$spec.tmp" "$spec"
+
+step "draft for a spec change a verification found"
+sed 's/^status: blocked/status: draft/' "$spec" >"$spec.tmp" && mv "$spec.tmp" "$spec"
+printf '%s\n' '# Verify report' '' '**Decision:** approved (smoke, 2026-11-04)' >"$dir/verify-report.md"
+to_crlf "$dir/verify-report.md"
+has "$("$jsdd" next)" '(spec change from verify)' || fail "next did not point a verify spec change to /jsdd:specify: $("$jsdd" next)"
+rm "$dir/verify-report.md"
+sed 's/^status: draft/status: in-progress/' "$spec" >"$spec.tmp" && mv "$spec.tmp" "$spec"
 
 step "commit-message hook"
 cwd=$(str "$(native "$proj")")

@@ -192,6 +192,9 @@ records() {
     # A verification the user declined blocks the spec until /jsdd:plan resumes it.
     if [ "$status" = blocked ] && [ -f "$d/verify-report.md" ] &&
       uncomment "$d/verify-report.md" | grep -q '^\*\*Decision:\*\* declined'; then tnote="verify declined"; fi
+    # An approved spec change sends the spec back to draft for /jsdd:specify, then /jsdd:plan.
+    if [ "$status" = draft ] && [ -f "$d/verify-report.md" ] &&
+      uncomment "$d/verify-report.md" | grep -q '^\*\*Decision:\*\* approved'; then tnote="verify spec change"; fi
     printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
       "$id" "${type:--}" "${status:--}" "${phase:--}" "${deps:--}" "$done" "$total" "$open" "$title" "$(basename "$d")" \
       "$sclaim" "${tnote:--}"
@@ -433,6 +436,7 @@ next_up() {
         else if (tnote[k] == "all tasks done") hint = "/jsdd:verify " k
         else if (tnote[k] ~ /^no task free/) hint = tnote[k]
         else if (st[k] == "in-progress" || st[k] == "planned") hint = "/jsdd:implement " k (tnote[k] != "-" ? "   (" tnote[k] ")" : "")
+        else if (tnote[k] == "verify spec change") hint = "/jsdd:specify " k ", then /jsdd:plan " k "   (spec change from verify)"
         else if (open[k] > 0) hint = "/jsdd:specify " k "   (" open[k] " open questions)"
         else if (st[k] == "approved") hint = "/jsdd:plan " k
         else hint = "review spec, then /jsdd:plan " k

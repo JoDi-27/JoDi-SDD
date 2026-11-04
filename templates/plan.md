@@ -61,7 +61,7 @@ Source: verify-report.md round 1, approved by <who, date>.
 | Gap | Action | Became |
 | --- | --- | --- |
 | G1 | Fix the code: <what> | T9, T10 |
-| G2 | Change the spec: <which R or AC> | spec.md R3 reworded; T11 |
+| G2 | Change the spec: <which R or AC> | spec.md R3 reworded by /jsdd:specify; T11 |
 | G3 | Record a Deviation | Deviations row A1/G3 |
 | G4 | Move to BACKLOG.md | BACKLOG.md "Next": <item> |
 | G5 | <action> | dropped by <who> |

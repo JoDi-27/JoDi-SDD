@@ -1,6 +1,6 @@
 ---
 name: specify
-description: Create a new feature spec in specs/, or refine and clarify an existing one. Use when starting a new piece of work or picking up a PLAN.md item; spikes go to /jsdd:spike.
+description: Create a new feature spec in specs/, or refine and clarify an existing one, including the spec changes a verification found. Use when starting a new piece of work, picking up a PLAN.md item, or when /jsdd:verify left a spec in draft for a spec change; spikes go to /jsdd:spike.
 argument-hint: <idea | PLAN.md item | spec ID>
 ---
 
@@ -20,7 +20,7 @@ You write the WHAT and WHY of one slice of work. You do not plan or implement.
 
 ## 2. Create or open the spec
 
-- If the input is a spec ID (for example `003`), claim it (`jsdd claim 003`), open `specs/003-*/spec.md`, and go to step 4. If another session holds it, stop and report who.
+- If the input is a spec ID (for example `003`), claim it (`jsdd claim 003`), open `specs/003-*/spec.md`, and go to step 4. If another session holds it, stop and report who. If the spec is `draft` and its folder has a `verify-report.md` whose Decision is `approved`, go to step 3a first.
 - Otherwise pick the type: `spike` if the work answers questions or settles decisions (all PLAN.md Phase 0 spikes), `feature` if it delivers working behavior.
 - Spikes are created and run as an interview by `/jsdd:spike`, not by this skill. For a spike (new, or an existing spike ID), stop here and follow the `/jsdd:spike` skill instead. The same goes for a baseline (`type: baseline`): follow `/jsdd:baseline`.
 - If the work is clearly larger than a few days, propose a split into several specs and confirm it with the user before creating them.
@@ -38,6 +38,14 @@ Fill in every section of the template and delete the guidance comments.
 - A measurable NFR the spec delivers (for example a response time) becomes an acceptance criterion. NFRs that apply to everything are product articles, checked in the plan, and need no R.
 - Never guess. Anything unknown becomes `[NEEDS CLARIFICATION: <specific question>]` in the section where it matters.
 
+## 3a. Revise the spec for a verification
+
+A verification found gaps and the user chose to change the spec for some of them. The plan and tasks were already built from the old spec; `/jsdd:plan` will amend them after you.
+
+- Read `verify-report.md`. Revise only for the kept gaps whose action (or chosen option) is a spec change; leave the others for `/jsdd:plan`.
+- For each, rework the R or AC with the user, following the rules in step 3. When a gap leaves the behavior itself unclear, add a `[NEEDS CLARIFICATION]` marker and ask it in step 4.
+- Add one changelog line per gap that names the round and gap: "Verify round 2/G3: R3 reworded to match the code." Do not edit the report, the plan, or the tasks.
+
 ## 4. Clarify
 
 - Collect the open markers. Ask the user the most important ones (up to five, those that change scope or behavior most) in a single AskUserQuestion call, with a recommended answer first where you have one.
@@ -47,4 +55,4 @@ Fill in every section of the template and delete the guidance comments.
 ## 5. Finish
 
 - Keep `status: draft`. Release the spec (`jsdd release <ID>`) and run `jsdd status --write`.
-- Report in a few lines: the spec path, the requirement IDs it covers, any rows of `docs/requirements.md` you changed or added, the number of open questions left, and the next step: the user reviews the spec, then runs `/jsdd:plan <ID>`.
+- Report in a few lines: the spec path, the requirement IDs it covers, any rows of `docs/requirements.md` you changed or added, the number of open questions left, and the next step: the user reviews the spec, then runs `/jsdd:plan <ID>` (after a verification, it plans the rest of the gaps as an amendment).

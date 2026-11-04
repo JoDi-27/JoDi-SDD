@@ -47,14 +47,16 @@ flowchart LR
   inprogress -->|"/jsdd:verify<br/>(converged)"| done
   inprogress -.->|"/jsdd:verify<br/>(gaps, you approve)"| approved
   inprogress -.->|"/jsdd:verify<br/>(gaps, you decline)"| blocked
+  inprogress -.->|"/jsdd:verify<br/>(spec change, you approve)"| draft
+  draft -.->|"/jsdd:specify, then /jsdd:plan<br/>(amendment)"| planned
   blocked -.->|"/jsdd:plan<br/>(resume: amendment)"| planned
 ```
 
-`/jsdd:verify` checks each acceptance criterion and also reads the code against each requirement, looking for requirements that are missing or only partly built, behavior no requirement asks for, and drift from the plan. It writes what it finds to `verify-report.md` in the spec folder, with a numbered proposed action for each gap (G1, G2, …), and asks whether to fix them. Verify changes no tasks, plan, or spec. If you approve, the spec goes back to `approved`, and `/jsdd:plan` plans the gaps as an **amendment**: a numbered section of the plan's Amendments (A1, A2, …) saying what each gap became, and follow-up tasks in `tasks.md` under `### A<n> · Follow-up from verify round <r>`, each naming its gap. The reviewer checks the amendment, then `/jsdd:implement` builds it and `/jsdd:verify` checks again. If you decline, only the report is kept and the spec is `blocked`. It stays blocked until you run `/jsdd:plan <ID>` (your approval to fix the gaps after all) or drop it.
+`/jsdd:verify` checks each acceptance criterion and also reads the code against each requirement, looking for requirements that are missing or only partly built, behavior no requirement asks for, and drift from the plan. It writes what it finds to `verify-report.md` in the spec folder, with a numbered proposed action for each gap (G1, G2, …), and asks whether to fix them. Verify changes no tasks, plan, or spec. If you approve, the spec goes back to `approved` (or `draft`, for a spec change; see below), and `/jsdd:plan` plans the gaps as an **amendment**: a numbered section of the plan's Amendments (A1, A2, …) saying what each gap became, and follow-up tasks in `tasks.md` under `### A<n> · Follow-up from verify round <r>`, each naming its gap. The reviewer checks the amendment, then `/jsdd:implement` builds it and `/jsdd:verify` checks again. A gap fixed by changing the spec goes through `/jsdd:specify`, not the plan: the plan was derived from the spec, so it never edits it. If you approve a spec change, the spec goes back to `draft`; `/jsdd:specify <ID>` revises it with you, and `/jsdd:plan <ID>` then approves the revised spec and plans what it means for the build as an amendment, never a new plan. When a gap comes back after its fix was built, two rounds of fixes have not closed it, so the spec or its check is likely wrong: verify then offers only a spec change or dropping the gap. If you decline, only the report is kept and the spec is `blocked`. It stays blocked until you run `/jsdd:plan <ID>` (your approval to fix the gaps after all) or drop it.
 
 | Status | Meaning | Set by |
 | --- | --- | --- |
-| `draft` | Spec written, may still have open questions | `/jsdd:specify` |
+| `draft` | Spec written, may still have open questions. Also: a spec change you approved after verification, waiting for `/jsdd:specify` | `/jsdd:specify`; `/jsdd:verify` |
 | `approved` | Spec reviewed; no open questions. Also: verification gaps you approved, waiting to be planned | `/jsdd:plan` (running it is the approval); `/jsdd:verify` |
 | `planned` | Plan and tasks written, or an amendment's follow-up tasks | `/jsdd:plan` |
 | `in-progress` | Tasks being done | `/jsdd:implement` (running it is the approval of the plan) |
