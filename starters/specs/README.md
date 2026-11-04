@@ -61,7 +61,7 @@ flowchart LR
 | `draft` | Spec written, may still have open questions. Also: a spec change you approved after verification, waiting for `/jsdd:specify` | `/jsdd:specify`; `/jsdd:verify` |
 | `approved` | Spec reviewed; no open questions. Also: verification gaps you approved, waiting to be planned | `/jsdd:plan` (running it is the approval); `/jsdd:verify` |
 | `planned` | Plan and tasks written, or an amendment's follow-up tasks | `/jsdd:plan` |
-| `in-progress` | Tasks being done | `/jsdd:implement` (running it is the approval of the plan) |
+| `in-progress` | Tasks being done. Once every task is ticked, the board shows `ready to verify` in its Progress column and `jsdd done` names `/jsdd:verify` as the next step; this is not a status of its own, since it comes from the ticks | `/jsdd:implement` (running it is the approval of the plan) |
 | `done` | Every acceptance criterion verified with evidence, and the code matches every requirement | `/jsdd:verify` |
 | `blocked` | Cannot continue; the reason is in the spec's changelog. After a declined verification, `verify-report.md` holds the gaps and `/jsdd:plan` resumes it | anyone; `/jsdd:verify` when you decline its fixes |
 | `dropped` | Will not be done; the reason is in the spec's changelog | anyone |
