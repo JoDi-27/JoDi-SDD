@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.7.0 (2026-11-04)
+
 - Living capability documents. Each requirement group gets `docs/capabilities/<group>.md` (`auth.md` for `FR-AUTH`), which says how that area works now: one entry per requirement row with its current behavior, what proves it, and the spec that last changed it. Template `templates/capability.md`.
 - Feature specs have a new **Capability changes** table: one line per requirement row the spec `adds`, `modifies`, or `removes`. `/jsdd:specify` fills it in after reading the area's entries. A removed behavior keeps its row ID with priority `W`. A baseline needs no table: when it closes, every row in its `refs` is added, which writes the area's first version.
 - **Behavior change:** `/jsdd:verify` merges a spec's Capability changes into the capability documents when it closes the spec. If an entry changed after the spec was approved, it shows you both before merging. The reviewer checks the table in plan, verify, and baseline modes. `/jsdd:plan` reads the entries as context.
