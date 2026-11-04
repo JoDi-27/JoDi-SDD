@@ -3,7 +3,8 @@
 <!--
 Written by /jsdd:verify, one round per run. The latest round replaces the sections below; History keeps one line per round.
 /jsdd:verify never applies Proposed actions. If the user approves them, the spec goes back to `approved` and
-/jsdd:plan {{ID}} plans them as an amendment in plan.md. If the user declines, the spec is `blocked` and this report is
+/jsdd:plan {{ID}} plans them as an amendment in plan.md. If a kept action changes the spec, it goes back to `draft`
+instead: /jsdd:specify {{ID}} makes the spec changes, then /jsdd:plan {{ID}} plans the rest. If the user declines, the spec is `blocked` and this report is
 all that changes; /jsdd:plan {{ID}} resumes it.
 -->
 

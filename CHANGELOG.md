@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- **Behavior change:** spec changes from a verification go through `/jsdd:specify`, not the plan. The plan is derived from the spec, so an amendment no longer edits `spec.md`. When you approve a gap whose fix is a spec change, `/jsdd:verify` sets the spec back to `draft`. `/jsdd:specify <ID>` revises it with you and logs each change against its gap ("Verify round 2/G3: …"). `/jsdd:plan <ID>` then approves the revised spec and plans the rest of the gaps as an amendment, never a new plan. `jsdd next` points such a spec to `/jsdd:specify`.
+- `/jsdd:verify` stops the fix loop after two rounds. A gap on the same acceptance criterion or requirement as last round, whose planned fix is now built, gets only two options: change the spec, or drop the gap.
+
 ## 0.6.0 (2026-11-03)
 
 - `/jsdd:verify` checks the code against the spec, not only the acceptance criteria' tests. The `sdd-reviewer` agent, and the verifying session, give each requirement a verdict (`delivered`, `partial`, `missing`, `contradicted`) with the code that delivers it. They also list behavior no requirement asks for and differences from the plan that its Deviations do not record. Each gap gets a proposed fix: a task with a check, a spec change, a Deviation, or a BACKLOG item.
