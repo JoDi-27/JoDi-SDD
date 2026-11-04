@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-- The README is rewritten for readers new to spec-driven development: it explains what SDD is, walks through a first feature with example spec and task lines, and says when the kit is and isn't a good fit, with an FAQ. Reference material moved out: the first-feature walkthrough and the existing-codebase guide to `docs/`, the Spec Kit comparison to `docs/comparison.md`, and the lifecycle details to `specs/README.md`. New `GLOSSARY.md` defines every term the kit uses, linked from both READMEs.
+- The README is rewritten for readers new to spec-driven development: it explains what SDD is, walks through a first feature with example spec and task lines, and says when the kit is and isn't a good fit, with an FAQ. Reference material moved out: the first-feature walkthrough and the existing-codebase guide to `docs/`, the Spec Kit comparison to `docs/comparison.md`, with the lifecycle diagram in the walkthrough. New `GLOSSARY.md` defines every term the kit uses, linked from both READMEs.
 
 ## 0.7.0 (2026-11-04)
 

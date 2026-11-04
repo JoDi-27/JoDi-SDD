@@ -53,4 +53,34 @@ Next up:
 
 </details>
 
-Every spec status and what moves a spec between them is in [specs/README.md](../starters/specs/README.md#lifecycle). The terms are in the [glossary](../GLOSSARY.md).
+## What verify can do to a spec
+
+A feature spec moves through these statuses. Each arrow names the `/jsdd:` command that moves the spec, in bold, and the outcome, in italics. Running a command is your approval of the step before.
+
+```mermaid
+stateDiagram-v2
+  [*] --> draft: <b>specify</b>
+  draft --> planned: <b>plan</b>
+  planned --> in_progress: <b>implement</b>
+  in_progress --> done: <b>verify</b><br/><i>converged</i>
+  in_progress --> approved: <b>verify</b><br/><i>gaps approved</i>
+  in_progress --> blocked: <b>verify</b><br/><i>gaps declined</i>
+  in_progress --> draft: <b>verify</b><br/><i>spec change approved</i>
+  draft --> planned: <b>specify</b>, then <b>plan</b><br/><i>amendment</i>
+  approved --> planned: <b>plan</b><br/><i>amendment</i>
+  blocked --> planned: <b>plan</b><br/><i>amendment</i>
+  blocked --> dropped: <i>dropped by hand</i>
+  done --> [*]
+  dropped --> [*]
+  in_progress: in-progress
+```
+
+- **Converged:** every acceptance criterion passes with evidence, and the code does what each requirement says, with nothing extra and no unrecorded drift from the plan. The spec is `done`.
+- **Gaps:** verify only judges. It writes `verify-report.md` in the spec folder, with a numbered proposed action for each gap (G1, G2, …), and asks whether to fix them. Approve, and the spec goes to `approved`; `/jsdd:plan` then adds the fixes to the plan as a numbered amendment (A1, A2, …) with follow-up tasks, which the reviewer checks and `/jsdd:implement` builds as usual.
+- **Spec change:** when a fix you approve changes the spec itself, the spec goes back to `draft`. `/jsdd:specify 001` revises it with you, and `/jsdd:plan 001` approves the revision and plans the rest as an amendment.
+- **Declined:** only the report is kept and the spec is `blocked`. Running `/jsdd:plan 001` later is your approval to fix the gaps after all; otherwise, drop the spec.
+- **Two rounds:** a gap on the same criterion that survives two rounds of fixes means the spec or its check is likely wrong, so verify offers only a spec change or dropping the gap, not a third fix.
+
+Spikes and baselines skip the plan: they go `draft → in-progress → done`. The full status table is in [specs/README.md](../starters/specs/README.md#lifecycle).
+
+The terms are in the [glossary](../GLOSSARY.md).
