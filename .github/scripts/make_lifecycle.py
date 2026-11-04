@@ -194,7 +194,10 @@ def build(theme):
             draw = anim([(0, f"stroke-dashoffset: {length}; opacity: 0"), (ts, f"stroke-dashoffset: {length}; opacity: 1"),
                          (ts + EDGE_T, "stroke-dashoffset: 0; opacity: 1"), (b, "stroke-dashoffset: 0; opacity: 1"),
                          (b + FADE, "stroke-dashoffset: 0; opacity: 0"), (CYCLE, f"stroke-dashoffset: {length}; opacity: 0")])
-            parts.append(f'<g class="{draw}" style="stroke-dasharray: {length}"><path d="{d}" fill="none" stroke="{c["teal"]}" stroke-width="2" marker-end="url(#arr-teal)"/></g>')
+            parts.append(f'<g class="{draw}" style="stroke-dasharray: {length}"><path d="{d}" fill="none" stroke="{c["teal"]}" stroke-width="2"/></g>')
+            # the arrowhead is a marker, which does not follow the dash reveal, so it fades in on its own when the line arrives
+            head = windows([(ts + EDGE_T - 0.1, b)], fade=0.15)
+            parts.append(f'<g class="{head}"><path d="{d}" fill="none" stroke="none" marker-end="url(#arr-teal)"/></g>')
             lbl = windows([(ts + EDGE_T * 0.6, b)])
             parts.append(f'<g class="{lbl}"><rect x="0" y="0" width="0" height="0"/>{edge_label(e, "t", "i")}</g>')
             reached = ts + EDGE_T
