@@ -47,6 +47,14 @@ Along the way:
 
 Everything is plain Markdown in your repository, driven by one bash script. There's no build step and no service.
 
+## Is this for me?
+
+JoDi-SDD earns its keep on work that takes more than one session: a feature with several moving parts, a change to code nobody fully remembers, a question that needs research before anyone can decide, or a project where several Claude sessions work at once. The spec is what lets a new session, or a reviewer that never saw the conversation, pick up the work and judge it.
+
+It is not yet a good fit for a one-line fix. Today every feature goes through all four steps, and the ceremony is real. A lighter track for small changes is [on the roadmap](ROADMAP.md#2-a-lighter-track-for-small-changes); until then, do small fixes outside the kit and commit them as `[meta] …`.
+
+It only works in Claude Code. If you use other coding agents, or want a large ecosystem of extensions, [Spec Kit](https://github.com/github/spec-kit) is the better fit. [docs/comparison.md](docs/comparison.md) says what each does differently.
+
 ## Install
 
 You need Claude Code with plugin support, ideally in a git repository. In the project where you want it:
@@ -67,77 +75,15 @@ Project scope records the plugin in the project's `.claude/settings.json`, so te
 
 </details>
 
-## Your first feature
+## Get started
 
 In a Claude Code session in your project:
 
-**1. Set up the project.** Run `/jsdd:init`. It adds a handful of Markdown files (listed [below](#what-jsddinit-adds)), then interviews you to fill them in: what you're building, the rules every design must respect, the requirements with their priorities, open decisions, and a phased roadmap, including your test command. Add notes after the command to pre-fill answers. On a project that already has code, it surveys the code first and plans the next milestone instead of an MVP.
+1. `/jsdd:init` sets up the project and interviews you to fill in its files. Add notes after the command to pre-fill answers.
+2. Start a new session, so the hooks pick up the project.
+3. `/jsdd:status` shows the board and the first command to run.
 
-**2. Start a new session.** The hooks that print the board and guard commits load at session start, so they don't run in the session that installed them.
-
-**3. Specify.** `/jsdd:specify Password reset by email` creates `specs/001-password-reset/spec.md` and asks you what it can't decide alone. The result reads like this:
-
-```markdown
-## Requirements
-- **R1** (FR-AUTH-02) When a user asks to reset their password, the system shall
-  email a single-use link that expires after 30 minutes.
-
-## Acceptance criteria
-- **AC-1** A reset link used after 30 minutes is rejected, and the user is told
-  to request a new one.
-```
-
-Anything unknown is written as `[NEEDS CLARIFICATION: …]` rather than guessed, and the next step won't start until it's resolved.
-
-**4. Plan.** `/jsdd:plan 001` is your approval of the spec. Claude writes the design and a task list, and a reviewer agent in a fresh context checks both against the spec and your project's rules. Each task names what it touches, how it is checked, and the criterion it serves:
-
-```markdown
-- [ ] **T3** Reject expired reset tokens · `auth/reset.py` · check: `pytest tests/test_reset.py -k expired` → AC-1
-```
-
-**5. Implement.** `/jsdd:implement 001` is your approval of the plan. Claude claims one task at a time, does it, and runs `jsdd done 001 T3`, which runs the task's check and ticks the task only if the check passes. A failing check leaves the task unticked, however finished Claude says it is. Each task is committed with a message that cites it, such as `[001] T3 Reject expired reset tokens`.
-
-**6. Verify.** `/jsdd:verify 001` checks every acceptance criterion with evidence and reads the code against every requirement, with a second verdict from the reviewer agent. If everything holds, the spec is closed and the roadmap and board are updated. If it finds gaps, it writes a report with a proposed fix for each and asks whether to apply them. Say yes, and `/jsdd:plan 001` plans the fixes as a reviewed amendment; say no, and the spec is blocked until you decide.
-
-**7. Next.** `/jsdd:status` shows the board and the next command to run.
-
-<details>
-<summary>What the board looks like</summary>
-
-```text
-| ID  | Type    | Status      | Phase | Progress | Open Qs | Depends on | Title                   |
-| --- | ------- | ----------- | ----- | -------- | ------- | ---------- | ----------------------- |
-| 001 | feature | done        | 1     | -        |         |            | Password reset by email |
-| 002 | feature | in-progress | 1     | 3/6      |         |            | Session expiry          |
-| 003 | spike   | draft       | 0     | 0/3      |         |            | Which email provider?   |
-
-3 specs: draft 1, in-progress 1, done 1
-
-Next up:
-  002  in-progress Session expiry          /jsdd:implement 002   (T4 free)
-  003  draft       Which email provider?   /jsdd:spike 003
-```
-
-</details>
-
-## Is this for me?
-
-JoDi-SDD earns its keep on work that takes more than one session: a feature with several moving parts, a change to code nobody fully remembers, a question that needs research before anyone can decide, or a project where several Claude sessions work at once. The spec is what lets a new session, or a reviewer that never saw the conversation, pick up the work and judge it.
-
-It is not yet a good fit for a one-line fix. Today every feature goes through all four steps, and the ceremony is real. A lighter track for small changes is [on the roadmap](ROADMAP.md#2-a-lighter-track-for-small-changes); until then, do small fixes outside the kit and commit them as `[meta] …`.
-
-It only works in Claude Code. If you use other coding agents, or want a large ecosystem of extensions, [Spec Kit](https://github.com/github/spec-kit) is the better fit. [docs/comparison.md](docs/comparison.md) says what each does differently.
-
-## Existing codebases
-
-The kit works on a project that already has code. It doesn't ask you to document the whole codebase up front. Instead, it records how an area works today just before new work first changes it:
-
-1. `/jsdd:init` notices the existing code. It surveys the codebase for its areas, test command, and conventions, and plans the next milestone rather than an MVP. If the project already has its own `PLAN.md`, `docs/requirements.md`, `VISION.md`, PRD, or folder of ADRs, init offers to move it to `docs/legacy/` and carry its content into the kit's format, for you to confirm. It never overwrites a file.
-2. Before a feature changes an area that has no requirements yet, `/jsdd:baseline <area>` reads that area's code and tests and drafts what it does today. You confirm which behaviour is intended. Those become requirement rows and a *baseline spec*, whose acceptance criteria are the existing tests.
-3. `/jsdd:verify` runs those tests. When they pass, the baseline is done and its requirements count as done, without anything being rebuilt.
-4. The feature spec then cites the rows it changes. Coverage shows them in progress again until the feature is verified.
-
-Areas no work touches stay unrecorded. `/jsdd:specify` suggests a baseline when a feature reaches existing code that has none.
+Then follow [Your first feature](docs/first-feature.md) on a new project, or [Existing codebases](docs/existing-codebases.md) on one that already has code.
 
 ## Commands
 
@@ -188,6 +134,17 @@ claude plugin uninstall jsdd@jodi-sdd --scope project
 **Can two people, or two sessions, work on one project?** Yes. A session claims a spec or task before starting, so another session skips it. Claims are shared across worktrees on one machine and show as stale after 8 hours. See [Working in parallel](starters/specs/README.md#working-in-parallel).
 
 ## Going further
+
+Two guides, depending on where you start:
+
+| | New project | Existing codebase |
+| --- | --- | --- |
+| Read | [Your first feature](docs/first-feature.md) | [Existing codebases](docs/existing-codebases.md) |
+| Init does | Interviews you and plans an MVP | Surveys the code and plans the next milestone |
+| Before building | Specify the feature | Record how the area works today with `/jsdd:baseline` |
+| Requirements come from | The interview | The code, confirmed by you, one area at a time |
+
+Reference:
 
 - [GLOSSARY.md](GLOSSARY.md): every term the kit uses, one line each.
 - [starters/specs/README.md](starters/specs/README.md): the full workflow, including every spec status and what moves a spec between them, spikes, baselines, IDs, file formats, and the commit-message format. `/jsdd:init` copies it into your project as `specs/README.md`.
