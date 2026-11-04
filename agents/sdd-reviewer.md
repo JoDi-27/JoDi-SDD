@@ -29,6 +29,7 @@ Check, and report each problem as a finding:
 1. **Coverage.** Every requirement (R) maps to part of the design. Every acceptance criterion (AC) maps to a test or a recorded manual check in the test strategy. Every task names its files, its check, and the ACs it serves.
 2. **No new requirements.** The plan adds no behavior the spec does not ask for. Anything extra belongs in `BACKLOG.md`.
 2a. **Requirement traceability.** Every ID in the spec's `refs` exists in `docs/requirements.md` and is tagged on at least one R. Read those rows: flag an R that contradicts or narrows its row without the row having been updated, and a row whose behavior no R covers. Flag a measurable NFR the work touches (for example a response time in `NFR-PERF`) that has no AC.
+2b. **Capability changes.** The spec's Capability changes table has one line per row an R is tagged with. Read the row's entry in `docs/capabilities/<group>.md` (`auth.md` for `FR-AUTH`): `adds` is for a row with no entry, `modifies` for one with an entry. Flag a `modifies` whose Rs drop or contradict a statement of the entry without the spec saying so, and a design that changes behavior an entry records for a row the spec does not list.
 3. **Constitution check.** Every article the work touches is listed with how it complies. Look for articles it touches but does not list, especially the product articles.
 4. **Decisions.** Every real choice has a Decisions row with alternatives. Every library, SDK, or tool has a version from current documentation (article 6). Flag a plan decision that contradicts a DEC row without an amendment, and an ND the plan settles without recording it in `docs/decisions.md`.
 5. **Tasks.** Each is small (half a day at most), leaves the build green, and has a check written as a command in backticks (`check: \`make test\``) or as `check: manual: <what a person checks>`. `[P]` marks only tasks that touch different files and do not need each other's code.
@@ -40,7 +41,7 @@ Check, and report each problem as a finding:
 1. Read the changes in the range (`git diff --stat`, then the files that matter).
 2. For each AC in `spec.md`: find the test or check the plan names for it, read it, and run it when it is a command. Decide whether it really proves the AC, not just whether it passes. A test that passes without exercising the behavior is a gap.
 3. **Conformance.** For each R in `spec.md`, find the code path that delivers it and read it, not only its tests. Decide whether the code does what the R says, no more and no less: `delivered`, `partial`, `missing`, or `contradicted`, citing `file:line`. Check this against the rows of `docs/requirements.md` named in `refs` as well as the spec's R list.
-4. **Unrequested behavior.** List behavior in the changed code that no R asks for.
+4. **Unrequested behavior.** List behavior in the changed code that no R asks for. Also list behavior an entry in `docs/capabilities/` records that the changed code alters, for a row the spec's Capability changes table does not list, and a `removes` line whose behavior is still in the code.
 5. **Plan drift.** Compare the code with the plan's Design and tasks. List each difference that the plan's Deviations do not record.
 6. Apply the architecture checklist below to the changed code.
 7. For each gap (a failed or unproven AC, an R that is not `delivered`, unrequested behavior, plan drift), propose an action: fix the code (with a check and the ACs or Rs it serves), change the spec to match the code, record a Deviation, or move it to BACKLOG.md. Where more than one is sensible, say so. Number them G1, G2, …: `/jsdd:plan` later turns the approved ones into tasks.
@@ -51,7 +52,7 @@ A baseline spec has no plan or tasks and no code changes: it describes code that
 
 1. For each R in Current behavior: read the code path it names and check that the code does what the R says, no more and no less. Flag an R that describes intended rather than actual behavior.
 2. For each AC: read the test its check names and run the check when it is a command. Decide whether the test really exercises the behavior, not just whether it passes. A test that passes without exercising the behavior is a gap.
-3. Check traceability: every ID in `refs` exists in `docs/requirements.md` and is tagged on an R, and each row's wording matches its R.
+3. Check traceability: every ID in `refs` exists in `docs/requirements.md`, and is tagged on an R, and each row's wording matches its R. A baseline has no Capability changes table: each row in `refs` is added to its capability document when the baseline closes, so flag a row that already has an entry in `docs/capabilities/<group>.md`.
 4. Look in the area's paths for behavior a user would notice that no R records, and list it as a note.
 5. Skip the architecture checklist: existing code is not reviewed against rules written after it.
 

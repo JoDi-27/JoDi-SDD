@@ -29,6 +29,7 @@ Claude Code is fast, but on bigger features it drifts: it forgets what was decid
 - **Open questions get researched before you're asked.** A *spike* is a spec for answering a question rather than building something. A research agent writes a briefing with sources and asks you only what it can't look up. Your answers and the decisions they lead to stay in the project.
 - **Existing codebases.** On a project with code, each area is recorded just before work first changes it, as a *baseline* checked by the tests you already have. There's no up-front inventory. See [Existing codebases](#existing-codebases).
 - **Traceability.** Each requirement in `docs/requirements.md` has an ID (`FR-AUTH-02`). Specs cite those IDs, tasks cite the spec's acceptance criteria, and commits cite the task. `jsdd coverage` shows which requirements have a spec and which are done.
+- **Living capability docs.** When a spec closes, what it adds, changes, or removes is merged into `docs/capabilities/<area>.md`, so each area has one document that says how it works now, without reading every spec that touched it.
 
 Everything is plain Markdown in your repository, driven by one bash script. There's no build step and no service.
 
@@ -163,6 +164,7 @@ Under the hood, these commands use the `jsdd` CLI, which the plugin adds to the 
 | --- | --- |
 | `docs/intent.md` | What you are building and why |
 | `docs/requirements.md` | Requirements with IDs (`FR-`, `NFR-`) and priorities |
+| `docs/capabilities/` | Created as specs close: one document per requirement group saying how that area works now |
 | `docs/decisions.md` | Settled decisions (`DEC-nn`) and open ones (`ND-nn`) |
 | `PLAN.md` | Phases, each item tagged with the requirements it covers |
 | `BACKLOG.md` | One line per open decision with a suggested default, and spikes with their questions |
