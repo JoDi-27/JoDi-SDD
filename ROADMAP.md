@@ -2,7 +2,7 @@
 
 Feature ideas for JoDi-SDD, drawn from a comparison with other spec-driven development frameworks: [Spec Kit](https://github.com/github/spec-kit), Kiro (and cc-sdd), OpenSpec, BMAD, Taskmaster, Tessl, and GSD. Nothing here is committed to. Each idea says what's missing today, where it comes from, and a rough shape for it. Open an issue before starting one, as described in [CONTRIBUTING.md](CONTRIBUTING.md).
 
-Already covered, so not listed: a constitution, EARS requirements, `NEEDS CLARIFICATION` markers, requirement-to-commit traceability, spikes, brownfield baselines, and parallel claims.
+Already covered, so not listed: a constitution, EARS requirements, `NEEDS CLARIFICATION` markers, requirement-to-commit traceability, spikes, brownfield baselines, and parallel claims between sessions on one machine (idea 9 extends them to several people).
 
 ## High value
 
@@ -83,6 +83,41 @@ Optional domain checklists (security, accessibility, data retention) can add mor
 **Gap:** spec, acceptance criteria, and evidence are all on disk, but writing a PR description means retyping them.
 
 **Shape:** `jsdd pr <ID>` prints a PR body from the spec, its acceptance criteria, and the evidence in `tasks.md`. Exporting tasks as GitHub issues is optional, as a second step.
+
+### 9. Claims shared through the git remote
+
+*From the kit's own limits, not another framework.*
+
+**Gap:** claims live in `.git/sdd-claims`, which is untracked and local. They coordinate sessions across worktrees on one machine, but two people on their own clones never see each other's claims. Both can pick the same task, and `jsdd new` can give them the same spec ID. The README FAQ's "can two people work on one project?" answer reads as if this were covered.
+
+**Shape:** an opt-in remote mode (`git config jsdd.claims remote`, remote from `jsdd.claimsRemote`, default `origin`). Each claim becomes a ref on the remote, `refs/sdd-claims/<name>` (`003`, `003-T4`, `id-004`). The ref points at an empty-tree commit whose message holds `owner=`, `user=`, `host=`, `since=`, `at=`, and `state=active|done`. Every update is a compare-and-swap that the remote enforces:
+
+- **claim:** `git push --force-with-lease=<ref>: origin <sha>:<ref>`, which succeeds only if the ref does not exist yet
+- **release:** a delete leased on this session's own sha, or on the sha just fetched with `--force`
+- **done:** a new `state=done` commit, leased on this session's own sha
+- **reads** (`status`, `next`, `claims`, hooks): `git fetch --prune` of `refs/sdd-claims/*` into a local cache, shown as "claims as of HH:MM"
+- **new:** `next_id` also counts remote `id-*` refs and the specs on `origin/main`
+- **prune:** the same rules as today, checked against `origin/main`, with leased deletes
+
+A prototype with a bare repository and two clones gave exactly one winner in each of 20 simultaneous claims, and refused a delete leased on the wrong sha. A default clone fetches none of these refs, and they are not branches. A claim fails closed when the remote is unreachable (`--local` overrides that), while reads fall back to the cache. Local mode stays the default.
+
+**Open questions:**
+
+- *Finished is not merged.* Another person can claim T5 as soon as T4 is marked done, while T4's code is still on its author's branch. One option is to record T4's branch in its done commit and have `claim` say "T4 is on `alice/003`; merge or rebase onto it first". The other is to gate on the tick reaching `origin/main`.
+- *Hosts.* GitHub and GitLab should accept custom ref namespaces, but test it on each host before relying on it. Gerrit and locked-down setups may refuse them.
+- *Latency.* Each claim costs a fetch and a push. Reuse a fetch made in the last ~30 seconds so the session-start hook's `status` and `claims` cost one round trip. Bash 3.2 on macOS has no `timeout`, so a remote that hangs needs a background-and-kill wrapper.
+- *Switching modes.* Refuse to switch while local claims are held, or move them to the remote with `jsdd claims --push-local`.
+- These refs coordinate people who cooperate. They don't enforce anything: anyone with push access can delete them.
+
+**Touches:**
+
+- `bin/jsdd`: put storage functions (`claim_exists`, `claim_state`, `claim_list`, `claim_take`, `claim_mark_done`, `claim_drop`) behind the ~20 places that read `$CLAIMS` directly, plus `next_id`, `cmd_new`, `prune_claims`, and the config and identity setup
+- `hooks/stop-claims.sh`: replace its copy of the storage logic with a `jsdd` call
+- `hooks/session-start.sh`: one fetch per session start
+- tests: a new `tests/scenarios/05-remote-claims.sh` with a bare origin and two clones, while the existing scenarios cover local mode
+- docs: `starters/specs/README.md` (Working in parallel), the README FAQ, and `GLOSSARY.md`
+
+The skills don't change: they only call the `jsdd` CLI.
 
 ## Considered and set aside
 
