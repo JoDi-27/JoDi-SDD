@@ -84,6 +84,19 @@ Optional domain checklists (security, accessibility, data retention) can add mor
 
 **Shape:** `jsdd pr <ID>` prints a PR body from the spec, its acceptance criteria, and the evidence in `tasks.md`. Exporting tasks as GitHub issues is optional, as a second step.
 
+### 9. A dependency graph of specs and tasks
+
+*From Taskmaster's task dependencies.*
+
+**Gap:** dependencies are recorded but never drawn. Each spec's `depends_on` shows on the board as a list of IDs, and the order of tasks is implicit in `tasks.md`: a task waits for every task before it, except the other tasks in its own run of `[P]` tasks. To see what blocks what across several specs, or which tasks in a spec can run in parallel, you have to read the files.
+
+**Shape:** `jsdd graph [specs|tasks] [ID ...]`:
+
+- `specs` prints the spec graph from `depends_on`, ordered by level (how many specs must close before each one). Each spec shows its status and the dependencies it is still waiting on, and the graph flags missing IDs and cycles.
+- `tasks` prints each spec's tasks as steps, with each run of `[P]` tasks as one step. Each task shows its state (ticked, claimed, free, or waiting on earlier tasks).
+- With no argument, it prints both together: the spec graph with each spec's tasks nested under it.
+- `--mermaid` prints the same graph as a Mermaid flowchart, with one subgraph per spec, which can go into `STATUS.md` or a PR description.
+
 ## Considered and set aside
 
 - **Support for other coding agents, and an extension or preset catalog.** Being built only for Claude Code is a deliberate trade-off (see the README). The hook-based enforcement depends on it. A cheaper middle ground is letting a project override files in `templates/`, for example with `specs/.templates/`.
