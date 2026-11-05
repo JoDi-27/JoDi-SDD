@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.7.4 (2026-11-05)
+
 - The plugin declares its icon. `plugin.json` sets `icon` to `./icon.png`, and the image moved from `.claude-plugin/` to the plugin root.
 
 ## 0.7.3 (2026-11-05)
