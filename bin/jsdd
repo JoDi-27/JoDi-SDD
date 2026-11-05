@@ -190,7 +190,7 @@ records() {
     total=$(count '^[[:space:]]*- \[[ xX]\]' "$progress")
     # shellcheck disable=SC2046  # the plan path is an optional extra argument, empty when there is no plan
     open=$(count '\[NEEDS CLARIFICATION' "$spec" $( [ -f "$d/plan.md" ] && echo "$d/plan.md" ))
-    deps=$(printf '%s' "$deps" | tr -d '[] ' )
+    deps=$(printf '%s' "$deps" | tr -d "[] \"'")
     num=$(basename "$d" | cut -c1-3); sclaim=-; tnote=-
     [ -d "$CLAIMS/$num" ] && sclaim=$(claim_desc "$num")
     case $status in planned|in-progress) [ -f "$d/tasks.md" ] && tnote=$(task_note "$num" "$d/tasks.md") ;; esac
@@ -988,6 +988,23 @@ test_commands() {
 # existing_code: what init reports about a project that already has code, for
 # /jsdd:init to decide whether it is brownfield. Prints nothing outside git or
 # when only the kit's own paths are tracked.
+# old_kit_refs: Markdown files outside specs/ and docs/legacy/ that still point at the
+# install.sh kit (specs/_kit/sdd, /sdd-* commands, .claude/skills/sdd-*), one line per
+# file with the line numbers. Instructions such as CLAUDE.md would send sessions to
+# commands that no longer exist once the old copy is removed.
+old_kit_refs() {
+  local f lines
+  (cd "$ROOT" && { find . -maxdepth 1 -type f -iname '*.md'
+     find .claude -maxdepth 1 -type f -iname '*.md' 2>/dev/null
+     for d in docs doc; do
+       if [ -d "$d" ]; then find "$d" -maxdepth 2 -type f -iname '*.md' ! -path "$d/legacy/*"; fi
+     done; } | sed 's|^\./||' | sort) | while IFS= read -r f; do
+    lines=$(tr -d '\r' <"$ROOT/$f" | grep -nE 'specs/_kit/sdd|/sdd-(specify|plan|implement|verify|spike|status)|\.claude/skills/sdd-' \
+      | cut -d: -f1 | paste -sd, - | sed 's/,/, /g' || true)
+    [ -z "$lines" ] || echo "  stale    $f (lines $lines)"
+  done
+}
+
 existing_code() {
   local files commits tests
   files=$(cd "$ROOT" && git ls-files 2>/dev/null \
@@ -1047,6 +1064,12 @@ cmd_init() {
     echo "Old kit (from install.sh):"
     for f in $old; do echo "  remove   $f"; run rm -rf "${ROOT:?}/$f"; done
     for f in skills agents hooks; do run rmdir "$ROOT/.claude/$f" 2>/dev/null || true; done
+  fi
+
+  a=$(old_kit_refs)
+  if [ -n "$a" ]; then
+    echo "Old kit references (point them at /jsdd:* and jsdd; /jsdd:init offers to):"
+    printf '%s\n' "$a"
   fi
 
   # Settings: drop the old kit's hooks and permission, allow jsdd without a prompt.
