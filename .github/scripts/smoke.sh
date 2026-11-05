@@ -55,6 +55,13 @@ has "$out" "source   docs/PRD.md for docs/intent.md and docs/requirements.md" ||
 has "$out" "source   docs/adr/ for docs/decisions.md" || fail "init did not list docs/adr/: $out"
 ! has "$out" "README.md for" || fail "init listed README.md as a source: $out"
 ! has "$out" "0001-use-postgres" || fail "init listed a file inside docs/adr/ on its own: $out"
+printf '# Notes\r\n\r\nCreate one with `/sdd-specify` first.\r\nRun `specs/_kit/sdd status`.\r\n' >CLAUDE.md
+mkdir -p docs/legacy
+echo 'Run /sdd-plan.' >docs/legacy/OLD.md
+out=$("$jsdd" init --dry-run)
+has "$out" "stale    CLAUDE.md (lines 3, 4)" || fail "init did not list CLAUDE.md's old kit references: $out"
+! has "$out" "docs/legacy/OLD.md" || fail "init listed a file in docs/legacy/ as stale: $out"
+rm -r CLAUDE.md docs/legacy
 
 step "init"
 "$jsdd" init
@@ -193,5 +200,14 @@ awk '{ print } /\| 003 \| FR-AUTH-01 \| adds \|/ { printf "| 2026-11-04 | 004 | 
 "$jsdd" capabilities --check FR-AUTH-01 >/dev/null || fail "capabilities --check failed after the baseline was merged: $("$jsdd" capabilities FR-AUTH-01)"
 rm -r docs/capabilities
 sed 's/^status: done/status: in-progress/' "$spec" >"$spec.tmp" && mv "$spec.tmp" "$spec"
+
+step "quoted depends_on"
+first=$("$jsdd" new feature "Done first" | sed 's|/spec.md$||')
+second=$("$jsdd" new feature "Waits on it" | sed 's|/spec.md$||')
+id=$(basename "$first" | cut -c1-3)
+sed 's/^status: draft/status: done/' "$first/spec.md" >"$tmp/s" && mv "$tmp/s" "$first/spec.md"
+sed "s/^depends_on: .*/depends_on: [\"$id\"]/" "$second/spec.md" >"$tmp/s" && mv "$tmp/s" "$second/spec.md"
+out=$("$jsdd" next)
+! has "$out" "waiting on" || fail "a quoted depends_on on a done spec still waits: $out"
 
 printf '\nsmoke: ok\n'
