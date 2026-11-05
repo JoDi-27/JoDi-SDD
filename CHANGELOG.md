@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- The plugin declares its icon. `plugin.json` sets `icon` to `./icon.png`, and the image moved from `.claude-plugin/` to the plugin root.
+
 ## 0.7.3 (2026-11-05)
 
 - `depends_on` accepts quoted IDs (`depends_on: ["003"]`, the way `refs` is written). Before, the quotes stayed on the ID, so `jsdd status` and `jsdd next` showed the spec waiting on its dependency even after it was done.
