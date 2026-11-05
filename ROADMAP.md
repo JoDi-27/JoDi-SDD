@@ -84,9 +84,31 @@ Optional domain checklists (security, accessibility, data retention) can add mor
 
 **Shape:** `jsdd pr <ID>` prints a PR body from the spec, its acceptance criteria, and the evidence in `tasks.md`. Exporting tasks as GitHub issues is optional, as a second step.
 
+### 9. GitHub Copilot support
+
+*From Agent Plugins, the plugin format that Copilot CLI and VS Code share, which also accepts Claude-format plugins.*
+
+**Gap:** the kit runs only in Claude Code. Copilot can now install plugins, and the same `skills/<name>/SKILL.md` layout loads in both, but a few parts still depend on Claude Code:
+
+- the hooks, whose event names, stdin JSON, and way of blocking a command differ in Copilot (VS Code also ignores matchers)
+- `${CLAUDE_PLUGIN_ROOT}` in the plan, init, and verify skills
+- `bin/jsdd` being on the PATH
+- the agents, which Copilot reads as `*.agent.md` with its own tool names
+- `$CLAUDE_CODE_SESSION_ID` as the owner of a claim
+
+**Shape:** one repository and one plugin for both agents:
+
+- A spike first: install the current plugin in Copilot CLI and record what loads, which manifest location it reads, and what the skills' slash names are.
+- `jsdd template <name>` prints a template's path, so skills no longer need `${CLAUDE_PLUGIN_ROOT}`.
+- Copilot hooks under `com.github.copilot/hooks/`, with `hooks/_lib.sh` converting Copilot's input so the hook scripts stay the same.
+- `jsdd init` installs a git `commit-msg` hook, so the commit-message check works with any agent, or none.
+- Copilot agents in `com.github.copilot/agents/`, generated from `agents/*.md` at release so the two copies can't drift.
+- `JSDD_SESSION_ID` as the claim owner, set by whichever agent starts the session.
+- If Copilot can't show the board at session start, `jsdd init` adds a line to `.github/copilot-instructions.md` telling the agent to run `jsdd status` first.
+
 ## Considered and set aside
 
-- **Support for other coding agents, and an extension or preset catalog.** Being built only for Claude Code is a deliberate trade-off (see the README). The hook-based enforcement depends on it. A cheaper middle ground is letting a project override files in `templates/`, for example with `specs/.templates/`.
+- **Support for other coding agents beyond Copilot, and an extension or preset catalog.** The hook-based enforcement depends on each agent's hooks, so each one costs real work to support. Copilot (idea 9) is the exception because it reads the same plugin format. A cheaper middle ground is letting a project override files in `templates/`, for example with `specs/.templates/`.
 - **Task complexity scoring** (Taskmaster). The plan reviewer can flag tasks that are too big without a separate feature.
 - **Persona agents** (BMAD). They add ceremony without the guarantees the hooks and checks give.
 
