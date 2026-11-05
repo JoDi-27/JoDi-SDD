@@ -4,6 +4,11 @@
 
 - The plugin declares its icon. `plugin.json` sets `icon` to `./icon.png`, and the image moved from `.claude-plugin/` to the plugin root.
 
+## 0.7.3 (2026-11-05)
+
+- `depends_on` accepts quoted IDs (`depends_on: ["003"]`, the way `refs` is written). Before, the quotes stayed on the ID, so `jsdd status` and `jsdd next` showed the spec waiting on its dependency even after it was done.
+- `jsdd init` lists Markdown files that still point at the install.sh kit (`/sdd-specify` and the other `/sdd-*` commands, `specs/_kit/sdd`, `.claude/skills/sdd-*`) as `stale`, with their line numbers. After `--migrate` those commands are gone, and a `CLAUDE.md` that still names them sends every session to them. `/jsdd:init` shows the lines and offers to rewrite them to `/jsdd:*` and `jsdd`.
+
 ## 0.7.2 (2026-11-04)
 
 - The board shows when a feature spec is ready for `/jsdd:verify`. Once every task is ticked, its Progress cell reads `6/6 ready to verify` and the summary line counts it (`in-progress 3 (1 ready to verify)`), in `jsdd status`, `specs/STATUS.md`, and the board shown at session start. `jsdd done` on the last open task also prints `next: /jsdd:verify <ID>`. Readiness is still worked out from the ticks, not stored as a status.
