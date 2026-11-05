@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.7.5 (2026-11-05)
+
 - Scenario tests (`tests/scenarios/run.sh`) run whole workflows through `jsdd` in CI on Linux, macOS bash 3.2, and Windows: migrating a project from the install.sh kit, a feature from planned to done across two sessions with every verification outcome and an amendment, a baseline and its capability document, and parallel worktrees.
 
 ## 0.7.4 (2026-11-05)
