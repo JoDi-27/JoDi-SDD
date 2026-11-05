@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": ["Bash(specs/_kit/sdd *)", "Bash(npm test)"]
+  },
+  "hooks": {
+    "SessionStart": [{ "hooks": [{ "type": "command", "command": "bash .claude/hooks/session-start.sh" }] }],
+    "PreToolUse": [{ "matcher": "Bash", "hooks": [
+      { "type": "command", "command": "bash .claude/hooks/pre-commit-message.sh" },
+      { "type": "command", "command": "./scripts/project-own-hook.sh" }
+    ] }],
+    "Stop": [{ "hooks": [{ "type": "command", "command": "bash .claude/hooks/stop-claims.sh" }] }]
+  }
+}

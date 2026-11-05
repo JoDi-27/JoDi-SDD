@@ -1,2 +1,5 @@
 # SC1010: jsdd uses `done` as a variable name (`done=...`, `state=done`), which is valid bash.
 disable=SC1010
+# Follow `. lib.sh` in the scenario tests (paths in source= directives are from the repository root).
+external-sources=true
+source-path=.

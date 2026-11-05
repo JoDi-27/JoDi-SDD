@@ -1,5 +1,5 @@
 # Checks every pull request and push to main: the plugin manifests, shellcheck
-# on the scripts, and a smoke test of jsdd and the hooks on Linux, on macOS,
+# on the scripts, and a smoke test and the scenario tests of jsdd and the hooks on Linux, on macOS,
 # whose stock bash is 3.2, and on Windows in Git Bash, as Claude Code runs them.
 name: CI
 
@@ -25,7 +25,7 @@ jobs:
         run: npx --yes @anthropic-ai/claude-code@2.1.314 plugin validate .
 
       - name: Shellcheck
-        run: shellcheck -S warning bin/jsdd hooks/*.sh .github/scripts/*.sh
+        run: shellcheck -S warning bin/jsdd hooks/*.sh .github/scripts/*.sh tests/scenarios/*.sh
 
   smoke:
     strategy:
@@ -46,7 +46,7 @@ jobs:
 
       - name: Scripts are checked out with LF
         run: |
-          if grep -lU $'\r' bin/jsdd hooks/*.sh hooks/hooks.json .github/scripts/*.sh; then
+          if grep -lU $'\r' bin/jsdd hooks/*.sh hooks/hooks.json .github/scripts/*.sh tests/scenarios/*.sh; then
             echo "CRLF in the files above: check .gitattributes" >&2; exit 1
           fi
 
@@ -60,3 +60,9 @@ jobs:
         # /bin/bash is 3.2 on macOS, the oldest bash jsdd supports; Git Bash on Windows.
         run: |
           if [ "$RUNNER_OS" = Windows ]; then bash .github/scripts/smoke.sh; else /bin/bash .github/scripts/smoke.sh; fi
+
+      - name: Scenario tests
+        # Whole workflows (migration, a feature's lifecycle, a baseline and its
+        # capability document, parallel worktrees) in throwaway repositories.
+        run: |
+          if [ "$RUNNER_OS" = Windows ]; then bash tests/scenarios/run.sh; else /bin/bash tests/scenarios/run.sh; fi
