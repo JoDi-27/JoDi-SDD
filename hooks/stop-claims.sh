@@ -18,7 +18,7 @@ held=""
 for c in "$dir"/*/; do
   [ -f "$c/owner" ] || continue
   name=$(basename "$c")
-  case "$name" in id-*) continue ;; esac   # ID reservations, not held work
+  case "$name" in id-*|run-*) continue ;; esac   # ID reservations and autopilot runs, not held work
   [ -f "$c/done" ] && continue             # finished tasks
   [ "$(sed -n 's/^owner=//p' "$c/owner" | head -1)" = "$sid" ] && held="$held $name"
 done

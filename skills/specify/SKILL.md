@@ -10,7 +10,7 @@ Input: $ARGUMENTS
 
 You write the WHAT and WHY of one slice of work. You do not plan or implement.
 
-**Runtime mode.** Run `jsdd mode` first. The decision points below are marked with their gate, like (gate `spec.approve`). In `manual` mode every gate is `ask`: a person decides, as the step says. If the mode is anything else, stop and tell the user that this skill runs only in manual mode for now.
+**Runtime mode.** Run `jsdd mode` first. The decision points below are marked with their gate, like (gate `spec.approve`). When you reach one, `jsdd gate <gate>` gives its policy. `ask`: a person decides, as the step says; in `manual` mode every gate asks. `auto`: pass it by the gate's autopilot rule (this skill has none: a person runs it before any autopilot run starts, so in `autopilot` mode its gates ask, or park where `jsdd gate` says so), and record the decision as `auto: <gate>` with what passed it, never as a person's; when the rule cannot pass it, park. `park`: ask nobody and guess nothing. Run `jsdd park <ID> <gate> "<what a person must decide>"`, release your claims, run `jsdd status --write`, and stop (inside `/jsdd:auto`, go to its pull request step). In any mode other than `manual` and `autopilot`, stop and tell the user that this skill does not support it yet.
 
 ## 1. Load context
 
@@ -59,4 +59,4 @@ A verification found gaps and the user chose to change the spec for some of them
 ## 5. Finish
 
 - Keep `status: draft`. Release the spec (`jsdd release <ID>`) and run `jsdd status --write`.
-- Report in a few lines: the spec path, the requirement IDs it covers, any rows of `docs/requirements.md` you changed or added, the rows it adds, modifies, or removes in the capability documents, the number of open questions left, and the next step: the user reviews the spec, then runs `/jsdd:plan <ID>` (after a verification, it plans the rest of the gaps as an amendment).
+- Report in a few lines: the spec path, the requirement IDs it covers, any rows of `docs/requirements.md` you changed or added, the rows it adds, modifies, or removes in the capability documents, the number of open questions left, and the next step: the user reviews the spec, then runs `/jsdd:plan <ID>` (after a verification, it plans the rest of the gaps as an amendment). In `autopilot` mode, also say that once the user is happy with the spec and no markers are left, `/jsdd:auto <ID>` runs the rest to a pull request without asking them anything; starting it is their approval of the spec.

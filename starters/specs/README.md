@@ -1,6 +1,6 @@
 # Specs: how work gets done here
 
-A lightweight spec-driven development (SDD) kit. Every piece of work, spike, feature, or baseline, starts as a spec in this folder, moves through a few reviewed steps, and is tracked here until it is done. The kit is a Claude Code plugin (`jsdd`): plain Markdown, one shell script, eight skills, three subagents, and four hooks. The terms used here are defined in the plugin's [glossary](https://github.com/JoDi-27/JoDi-SDD/blob/main/GLOSSARY.md).
+A lightweight spec-driven development (SDD) kit. Every piece of work, spike, feature, or baseline, starts as a spec in this folder, moves through a few reviewed steps, and is tracked here until it is done. The kit is a Claude Code plugin (`jsdd`): plain Markdown, one shell script, nine skills, three subagents, and six hooks. The terms used here are defined in the plugin's [glossary](https://github.com/JoDi-27/JoDi-SDD/blob/main/GLOSSARY.md).
 
 ## Where things live
 
@@ -131,24 +131,48 @@ A session that ends without releasing leaves its claim behind. Claims older than
 
 Every point where a skill waits for a person is a named **gate**: approving a spec (`spec.approve`), answering a clarifying question (`spec.clarify`), approving the fixes a verification proposes (`verify.gaps`), and so on. The skills mark each one, like (gate `plan.approve`). A **runtime mode** says what happens at every gate: `ask` (a person decides), `auto` (a check, a reviewer, or a rule passes it), or `park` (the work waits on the board, and nothing is guessed). `jsdd mode --explain` lists every gate and its policy.
 
-The kit runs in `manual` mode, where every gate asks, exactly as described in this file. It is the only mode available today; `autonomous` is reserved, and `jsdd` refuses it with a warning until it is built. Two settings choose the mode:
+The kit runs in `manual` mode, where every gate asks, exactly as described in this file. The other modes:
+
+- **`autopilot`**: you write and approve the spec; `/jsdd:auto <ID>` does the rest, up to a pull request, without asking you anything. See [Autopilot](#autopilot) below.
+- **`autonomous`** is reserved for runs that also work through the queue and settle product questions; `jsdd` refuses it with a warning until it is built.
+
+Two settings choose the mode:
 
 - `specs/jsdd.yml`, committed, says which modes this project allows and can tune their gates. With no file, only `manual` is allowed.
-- `SDD_MODE`, set by each person (in the shell, or under `env` in `.claude/settings.local.json`), picks the mode for their sessions. A mode that needs consent, such as `autonomous`, can only be picked this way, never as the file's `default`.
+- `SDD_MODE`, set by each person (in the shell, or under `env` in `.claude/settings.local.json`), picks the mode for their sessions. A mode that needs consent, such as `autopilot`, can only be picked this way, never as the file's `default`.
 
 ```yaml
 version: 1
-modes: [manual, autonomous]   # manual is always allowed
+modes: [manual, autopilot]    # manual is always allowed
 default: manual
-autonomous:                   # gates to change from the mode's own policies
-  verify.gap_option: park
+autopilot:                    # gates and budgets to change from the mode's own
+  verify.gap_option: park     # never pick an option without a person
+  attempts_per_task: 5        # tries at one task before it parks (default 3)
+  wall_time_hours: 6          # hours a run may take (default 4)
 ```
 
 It fails closed. `jsdd mode --check` lists every unknown key, gate, or value, and exits 1. While the file is invalid, or `SDD_MODE` names a mode that is unknown, not allowed, or not available, every gate asks, and the board starts with a `Mode warning:` line. Any mode other than `manual` is printed at the top of the board, so a session never runs in one without saying so. The mode is never written to `specs/STATUS.md`, because it belongs to the person, not the project.
 
+### Autopilot
+
+Two approvals, nothing in between: you approve the spec by starting the run, and the result by merging the pull request.
+
+1. Write the spec with `/jsdd:specify` and answer its questions, until it has no `[NEEDS CLARIFICATION]` markers.
+2. With `SDD_MODE=autopilot`, run `/jsdd:auto <ID>`. It commits the spec, moves to a branch (`autopilot/<ID>-<slug>`) if you are on the main branch, and starts.
+3. It plans the spec, and the `sdd-reviewer` approves the plan: an autopilot plan has a command check for every task and AC, and none that passes before the work is done. The checks are then frozen (`checks.lock`).
+4. It implements every task, ticking each only when its check passes, one commit per task. A check that keeps failing gets `attempts_per_task` tries.
+5. It verifies. Gaps whose fix is code with a check, or a harmless Deviation the reviewer recommends, are approved and built, then verified again. Converged closes the spec.
+6. It writes `run-report.md` in the spec folder, pushes the branch, and opens a pull request whose body `jsdd pr <ID>` writes: the requirements, the evidence, the deviations, and every decision made without you.
+
+What a machine cannot settle **parks** the spec instead of being guessed: a spec change, a manual check, a product choice between options, a gap that survives two rounds, a check that still fails, something only a person can do. A parked spec keeps its status, says why in its frontmatter (`parked:`) and changelog, shows under "Waiting for you" on the board, and `jsdd next` skips it. The run still ends with a **draft** pull request saying what waits for you. Settle it, run `jsdd unpark <ID>`, and `/jsdd:auto <ID>` again continues on the same branch.
+
+Guardrails: every decision the run makes is written as `auto: <gate>` with what passed it, never as yours; `jsdd done` refuses a task whose check changed since the plan was approved, unless a Deviation names it and `jsdd freeze <ID> --accept <Tn>` records it; a hook blocks edits to `specs/constitution.md`, `docs/intent.md`, `specs/jsdd.yml`, and `checks.lock` during a run; the run never force-pushes or merges. A Stop hook keeps the session going while the run has work left and is making progress, and lets it stop when it is parked, out of time, or stuck.
+
+The run cannot answer permission prompts. Give the session a permission mode that does not prompt for file edits, your build and test commands, `git`, and `gh`; otherwise the run stalls at the first prompt.
+
 ## Automation
 
-Claude Code hooks keep the kit honest: they print the board and the claims at session start, regenerate `specs/STATUS.md` when a spec, task list, `PLAN.md`, or `docs/requirements.md` changes, block commit messages without a spec ID or `[meta]`, and warn at the end of a session that still holds claims. The hooks, skills, agents, and the `jsdd` script live in the plugin, not in this repository; the hooks do nothing in a project without `specs/constitution.md`.
+Claude Code hooks keep the kit honest: they print the board and the claims at session start, regenerate `specs/STATUS.md` when a spec, task list, `PLAN.md`, or `docs/requirements.md` changes, block commit messages without a spec ID or `[meta]`, and warn at the end of a session that still holds claims. During an autopilot run, they also block edits to the files a run must not change, and keep the session going until the run is done or parked. The hooks, skills, agents, and the `jsdd` script live in the plugin, not in this repository; the hooks do nothing in a project without `specs/constitution.md`.
 
 ## Artifacts
 
@@ -158,6 +182,8 @@ Claude Code hooks keep the kit honest: they print the board and the claims at se
 | `plan.md` | yes | no | no | How: design, decisions, constitution check, test strategy, deviations |
 | `tasks.md` | yes | no | no | Ordered, small, checkable tasks, plus verification evidence |
 | `prototype/` | no | yes | no | Throwaway code for a spike, never shipped |
+| `checks.lock` | autopilot | no | no | Each task's check, frozen when the plan was approved (`jsdd freeze`) |
+| `run-report.md` | autopilot | no | no | What an autopilot run did, every decision it made without a person, and what parked |
 
 Templates are in the plugin's `templates/` folder. Frontmatter in `spec.md` is what the tooling reads:
 
@@ -183,6 +209,7 @@ In Claude Code:
 | `/jsdd:implement <ID> [task]` | Works through the tasks in order, ticking each when its check passes |
 | `/jsdd:baseline <area or ID> [what is about to change]` | Records how an area of existing code works today: rows in `docs/requirements.md` and a baseline spec checked by the existing tests |
 | `/jsdd:verify <ID>` | Checks every acceptance criterion (or a spike's answers), records evidence, closes the spec, updates PLAN and BACKLOG |
+| `/jsdd:auto <ID>` | In autopilot mode: plans, implements, and verifies an authored spec, then opens a pull request, without asking anything; parks what only a person can decide |
 | `/jsdd:status [ID]` | Shows the board and what to do next |
 | `/jsdd:init [--migrate] [notes]` | Sets up a project (starters, settings, `.gitignore`), then interviews you to fill the starters, surveying the code on an existing product; or moves it off the old install.sh copy |
 
@@ -202,6 +229,9 @@ jsdd coverage --phase 1 --priority M --missing   # Phase 1 Musts with no spec ye
 jsdd capabilities FR-AUTH            # rows with a capability entry, and live specs about to change them
 jsdd mode --explain                  # the runtime mode, and what happens at each gate
 jsdd gate plan.approve               # one gate's policy in the current mode: ask, auto, or park
+jsdd park 003 spec.change "R2 contradicts FR-AUTH-05"   # park a spec at a gate; jsdd unpark 003 puts it back
+jsdd freeze 003                      # record each task's check in checks.lock; done refuses a changed one
+jsdd pr 003                          # a pull request body from the spec, evidence, deviations, and run report
 ```
 
 Progress is computed from the files: checkboxes in `tasks.md` (for a spike, the goal questions, questions for you, and deliverables in `spec.md`; for a baseline, its acceptance criteria), and the open questions count from the `[NEEDS CLARIFICATION: …]` markers in `spec.md` and `plan.md`. HTML comments are ignored, so template guidance never counts.
