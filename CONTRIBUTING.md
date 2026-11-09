@@ -39,7 +39,8 @@ Every PR merged into `main` is released by [the Release workflow](.github/workfl
 2. **Agent** (optional, for a fresh-context or read-only helper): `agents/<name>.md` with `name`, `description`, `tools`, and a fixed output format the calling skill can use.
 3. **Hook** (optional, for something that must happen every time): a script in `hooks/` whose line 2 is `# <Event> on <matcher>: <what it does>`, registered in `hooks/hooks.json`. Hooks read JSON on stdin, must work without git, and exit quietly in a project without `specs/constitution.md`.
 4. **State** goes in files in the project, never only in the conversation. If the flow touches specs, it uses the `jsdd` CLI rather than editing status or checkboxes by hand, and adds a subcommand when it needs one.
-5. **Docs:** describe it in `starters/specs/README.md` and add it to the commands table in `README.md`.
+5. **Gates:** a step where the skill waits for a person names its gate, like (gate `plan.approve`). A new kind of decision gets a row in the `GATES` catalog in `bin/jsdd`, with its policy in every mode; scenario `05-modes` fails on a gate the catalog lacks. A new mode is a row in `MODE_TABLE` and a column in `GATES`.
+6. **Docs:** describe it in `starters/specs/README.md` and add it to the commands table in `README.md`.
 
 ## Conventions
 

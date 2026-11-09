@@ -10,6 +10,8 @@ Input: $ARGUMENTS
 
 A baseline writes down how an area works today, so the work that changes it has rows to cite and the kit counts existing behavior as done. It documents; it never changes code or writes tests. Survey only the area the coming work touches, never the whole product.
 
+**Runtime mode.** Run `jsdd mode` first. The decision points below are marked with their gate, like (gate `baseline.rows`). In `manual` mode every gate is `ask`: a person decides, as the step says. If the mode is anything else, stop and tell the user that this skill runs only in manual mode for now.
+
 ## 1. Open the baseline
 
 - If the input starts with the ID of a baseline spec, open `specs/<ID>-*/spec.md`, claim it (`jsdd claim <ID>`), and continue at the first step that is not finished. If another session holds it, stop and report who.
@@ -25,7 +27,7 @@ A baseline writes down how an area works today, so the work that changes it has 
 
 The survey says what the code does; the user says which of it is intended.
 
-- Show the candidate rows as a table: behavior, code, tests, passing, suggested priority. Ask the user to confirm, reword, re-rank, or drop each. A behavior the user calls a bug is not a row: it goes to Findings.
+- Show the candidate rows as a table: behavior, code, tests, passing, suggested priority. Ask the user to confirm, reword, re-rank, or drop each (gate `baseline.rows`). A behavior the user calls a bug is not a row: it goes to Findings.
 - Ask the survey's questions for the owner, 3 or 4 at a time, with AskUserQuestion where there are real options (suggested option first, labelled Recommended).
 - Never invent behavior. A row the user cannot confirm stays out, or stays in with a `[NEEDS CLARIFICATION: …]` marker in the spec.
 
