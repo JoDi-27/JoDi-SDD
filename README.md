@@ -146,6 +146,11 @@ Two guides, depending on where you start:
 | Before building | Specify the feature | Record how the area works today with `/jsdd:baseline` |
 | Requirements come from | The interview | The code, confirmed by you, one area at a time |
 
+Once the basics work:
+
+- [Runtime modes](starters/specs/README.md#runtime-modes): what happens at each point where a skill waits for you. `manual` asks every time; `autopilot` takes a spec you approved to a pull request with `/jsdd:auto <ID>`. Turn modes on in `specs/jsdd.yml`, then pick one per person with `SDD_MODE`. See [Autopilot](starters/specs/README.md#autopilot) for what a run does and what makes it park.
+- [Working in parallel](starters/specs/README.md#working-in-parallel): how sessions claim specs and tasks so they never collide. Claims are shared across worktrees on one machine by default. [Remote claims](starters/specs/README.md#several-people-claims-through-the-git-remote) (`git config jsdd.claims remote`) share them through the git remote, for several people on their own clones.
+
 Reference:
 
 - [GLOSSARY.md](GLOSSARY.md): every term the kit uses, one line each.
