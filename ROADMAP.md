@@ -119,9 +119,31 @@ A prototype with a bare repository and two clones gave exactly one winner in eac
 
 The skills don't change: they only call the `jsdd` CLI.
 
+### 10. GitHub Copilot support
+
+*From Agent Plugins, the plugin format that Copilot CLI and VS Code share, which also accepts Claude-format plugins.*
+
+**Gap:** the kit runs only in Claude Code. Copilot can now install plugins, and the same `skills/<name>/SKILL.md` layout loads in both, but a few parts still depend on Claude Code:
+
+- the hooks, whose event names, stdin JSON, and way of blocking a command differ in Copilot (VS Code also ignores matchers)
+- `${CLAUDE_PLUGIN_ROOT}` in the plan, init, and verify skills
+- `bin/jsdd` being on the PATH
+- the agents, which Copilot reads as `*.agent.md` with its own tool names
+- `$CLAUDE_CODE_SESSION_ID` as the owner of a claim
+
+**Shape:** one repository and one plugin for both agents:
+
+- A spike first: install the current plugin in Copilot CLI and record what loads, which manifest location it reads, and what the skills' slash names are.
+- `jsdd template <name>` prints a template's path, so skills no longer need `${CLAUDE_PLUGIN_ROOT}`.
+- Copilot hooks under `com.github.copilot/hooks/`, with `hooks/_lib.sh` converting Copilot's input so the hook scripts stay the same.
+- `jsdd init` installs a git `commit-msg` hook, so the commit-message check works with any agent, or none.
+- Copilot agents in `com.github.copilot/agents/`, generated from `agents/*.md` at release so the two copies can't drift.
+- `JSDD_SESSION_ID` as the claim owner, set by whichever agent starts the session.
+- If Copilot can't show the board at session start, `jsdd init` adds a line to `.github/copilot-instructions.md` telling the agent to run `jsdd status` first.
+
 ## Larger: autonomous mode
 
-### 10. Autonomous mode
+### 11. Autonomous mode
 
 *From GSD's unattended runs and Taskmaster's task loop, held to this kit's checks.*
 
@@ -265,7 +287,7 @@ What it costs:
 
 ## Considered and set aside
 
-- **Support for other coding agents, and an extension or preset catalog.** Being built only for Claude Code is a deliberate trade-off (see the README). The hook-based enforcement depends on it. A cheaper middle ground is letting a project override files in `templates/`, for example with `specs/.templates/`.
+- **Support for other coding agents beyond Copilot, and an extension or preset catalog.** The hook-based enforcement depends on each agent's hooks, so each one costs real work to support. Copilot (idea 10) is the exception because it reads the same plugin format. A cheaper middle ground is letting a project override files in `templates/`, for example with `specs/.templates/`.
 - **Task complexity scoring** (Taskmaster). The plan reviewer can flag tasks that are too big without a separate feature.
 - **Persona agents** (BMAD). They add ceremony without the guarantees the hooks and checks give.
 
@@ -273,4 +295,4 @@ What it costs:
 
 Ideas 1 and 2 first. Living specs make the kit useful over the long term, and a light track gets it used for everyday work. Idea 3 is the cheapest real quality gain, since it reuses the subagent setup the kit already has.
 
-Autonomous mode (idea 10) builds on ideas 3 and 6, so they come first either way. After them, its M0 parts (provenance, parking, frozen checks) are worth building on their own: they make unattended single runs safe before any loop exists. M1 then decides the rest: how often single-spec runs park on a real project says whether the loop and auto-merge are worth their cost.
+Autonomous mode (idea 11) builds on ideas 3 and 6, so they come first either way. After them, its M0 parts (provenance, parking, frozen checks) are worth building on their own: they make unattended single runs safe before any loop exists. M1 then decides the rest: how often single-spec runs park on a real project says whether the loop and auto-merge are worth their cost.
