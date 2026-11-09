@@ -171,16 +171,16 @@ The skills don't change: they only call the `jsdd` CLI.
 | Gate | Today | In autonomous mode |
 | --- | --- | --- |
 | Spec approval (`/jsdd:plan` runs) | The user reads the spec | A spec-quality reviewer pass (idea 6) with no blocking findings, and no `[NEEDS CLARIFICATION]` markers left |
-| Clarifying questions (`/jsdd:specify` step 4) | AskUserQuestion | `spike-researcher` settles the factual ones. A product question takes the suggested default from `BACKLOG.md` or the recommended answer when `decisions.clarifications` is `default`, recorded as an **assumption**. Otherwise the spec is parked |
-| Splitting a large spec | The user confirms | Split when the reviewer agrees each part is a few days at most |
+| Clarifying questions (`/jsdd:specify` step 4) | AskUserQuestion | `spike-researcher` settles the factual ones. `sdd-product` decides the product ones, as far as `decisions.product` allows (see "The product agent"). The rest park |
+| Splitting a large spec | The user confirms | Split when the reviewer agrees each part is a few days at most. `sdd-product` decides which part comes first |
 | Plan approval (`/jsdd:implement` runs) | The user reads the plan | `sdd-reviewer` plan mode with no blocking findings. The checks are frozen (see guardrails) |
 | A check fails, the plan is wrong, a decision is missing | Implement stops and asks | Up to `budgets.attempts_per_task` attempts. A plan change becomes a Deviation the reviewer accepts, when `decisions.deviations` allows it. A spec change is parked unless `decisions.spec_changes` allows it |
 | `check: manual:` tasks and ACs | A person checks | Not allowed in an autonomous plan. A spec that needs one is parked at that task |
 | Commits | Only if the user asked | One commit per task, `[<ID>] T<n>`, on the run's branch |
-| Verify gaps | The user approves, picks options, or stops | A gap whose fix is code with a check is approved. A gap with options takes the reviewer's recommended option when `decisions.gap_options` is `reviewer`. A spec-change gap and a repeated gap (the two-rounds rule) are parked |
+| Verify gaps | The user approves, picks options, or stops | A gap whose fix is code with a check is approved. A gap with options takes the reviewer's recommended option when `decisions.gap_options` is `reviewer`, or `sdd-product`'s pick when the options differ in product behavior and it is `product`. A spec-change gap goes to `sdd-product` when `decisions.spec_changes` allows it. A repeated gap (the two-rounds rule) is parked |
 | Partial `refs`, capability entries "changed since" | The user agrees | The reviewer checks the split or merge; parked if it disagrees |
 | Spikes | An interview | Only spikes the researcher can answer from docs and code. Questions for the owner park the spike |
-| Baselines | The user confirms each row | Reviewer baseline mode confirms the rows (`source: code (auto)`). A behavior that looks like a bug goes to Findings and `BACKLOG.md`, never into a row |
+| Baselines | The user confirms each row | Reviewer baseline mode confirms the rows (`source: code (auto)`). A behavior that looks like a bug goes to Findings and `BACKLOG.md`, never into a row. `sdd-product` may judge "bug or intended" when the docs answer it |
 | `/jsdd:init` interview | The user | Out of scope. A project must be initialized, with intent and constitution filled in, before a run |
 | Merge to the main branch | The user | `merge.policy`: `pr` opens a pull request (the default), `auto` merges when CI is green and the spec converged |
 
@@ -200,9 +200,9 @@ scope:
   exclude_groups: [FR-BILLING]
 
 decisions:
-  clarifications: park             # default | park
-  gap_options: reviewer            # reviewer | park
-  spec_changes: park               # park | narrow-should-could
+  product: cited                   # park | cited | inferred | uncited | all
+  gap_options: reviewer            # reviewer | product | park
+  spec_changes: park               # park | narrow-should-could | product
   deviations: reviewer             # reviewer | park
 
 budgets:
@@ -219,8 +219,39 @@ merge:
 - **A YAML subset, no new dependency.** The kit needs only bash, awk, jq, and python3, and none of them reads YAML on its own (Python's standard library has no YAML module). The charter uses sections one level deep, scalar values, and inline lists, the same subset `jsdd` already parses in spec frontmatter.
 - **Only `jsdd` parses it.** `jsdd charter get <key>` prints one effective value (preset plus overrides). Skills and hooks read it that way.
 - **Fails closed.** `jsdd charter --check` rejects unknown keys, values outside the allowed set, and numbers out of range: a typo in a safety setting is an error, never ignored. No file means autonomy is off. A key left out takes its preset's value, and with no preset, its strictest value.
-- **Presets make it one line.** Each preset is a full, documented set of values. `cautious` parks every product question and spec change and opens a PR. `standard` takes recorded defaults for clarifications and the reviewer's option for gaps. `hands-off` goes further, up to narrowing Should and Could requirements and merging (both open decisions below). Most projects pick a preset and never learn the keys.
+- **Presets make it one line.** Each preset is a full, documented set of values. `cautious` lets the product agent answer only what the docs already say, parks every other product question and every spec change, and opens a PR. `standard` also lets it decide what follows from the principles, and takes the reviewer's option for gaps. `hands-off` lets it decide everything outside the protected files, including spec changes and gaps with product options, and may merge (an open decision below). Most projects pick a preset and never learn the keys.
 - **Why lives in comments.** Teams that want longer reasoning add it to `specs/constitution.md`.
+
+#### The product agent
+
+A person who turns on autonomous mode accepts that the run will make product decisions for them. If product questions only parked, the mode would not be autonomous. Letting the session that wrote the spec answer its own questions is the weakest option, because it shares the author's context and blind spots. So product questions go to a new read-only agent, `sdd-product`, which decides them in a fresh context, the same way `sdd-reviewer` and `spike-researcher` work.
+
+**What it reads.** Only what's on disk: `docs/intent.md` (principles, "Not now", what success looks like), the product articles in `specs/constitution.md`, `docs/requirements.md` with priorities, `docs/decisions.md`, `BACKLOG.md`, `PLAN.md`, `docs/capabilities/`, the spec in question, and the code. It never sees the session that asked.
+
+**How far it may go.** Each answer is classified by what supports it, and `decisions.product` sets the highest class the run may act on. Anything above that class parks.
+
+| The question | Needs `decisions.product` | `cautious` | `standard` | `hands-off` |
+| --- | --- | --- | --- | --- |
+| The docs already answer it | `cited` | decides | decides | decides |
+| It follows from the principles | `inferred` | parks | decides | decides |
+| Nothing in the docs covers it | `uncited` | parks | parks | decides |
+| The docs contradict each other | `all` | parks | parks | decides: picks the newer or more specific source, and flags the conflict |
+| It would change the constitution, the intent, or a Must row's priority | (none) | parks | parks | parks |
+
+The last row parks under every preset because those files are protected (see guardrails), not because the agent is unsure.
+
+**How it decides with nothing to cite.** When the docs say nothing, it follows a fixed order of preference and records which rule it used:
+
+1. **Reversible:** the option that is cheapest to undo, such as an additive change, a flag, or no change to a data model or public API.
+2. **Smallest:** the smallest scope that still meets the acceptance criteria.
+3. **Closest:** what best fits the stated principles and the nearest existing capability.
+4. **Consistent:** what the code already does in similar places.
+
+**How decisions are recorded.** Each one is an `auto:` decision that names its class and its source, such as `auto: product, sdd-product, cited (intent.md § Not now)` or `auto: product, sdd-product, uncited (rule: reversible)`. It is also appended to `docs/decisions.md` with `status: assumed`. When the owner confirms or rejects it from the run report, the entry becomes a real decision, or a one-line correction and a new spec. Over time the docs answer more questions, and later runs park less and infer less.
+
+**The person gives up control over results, not the ability to change them.** The run report lists product decisions strongest-basis last: uncited and contradiction decisions first, each with what it would cost to reverse. A decision that is expensive to reverse (a schema, an external contract, deleting data) is still made under `hands-off`, but it also goes on the pull request as an item to review.
+
+**Not a persona.** This is not the BMAD-style role-play set aside below. The agent has a contract: it reads the files, classifies each answer, cites a source or names its rule, and never edits a file. Its output can be checked line by line.
 
 #### Who turns it on
 
@@ -240,14 +271,14 @@ Alongside:
 
 - **`jsdd auto doctor`** checks what the kit does not control and prints the fix for each failure: the charter is valid, the git tree is clean, `gh` is available when the policy is `pr`, and the permission mode will not prompt. The permission mode is the hardest step for a newcomer, so the fix it prints is exact.
 - **The board shows the mode.** The session-start board and `jsdd status` print `autonomous: standard · 2 parked` when a charter exists, with parked specs under "Waiting for you".
-- **One walkthrough page,** `docs/autonomous-mode.md`, in the style of `docs/first-feature.md`, and new `GLOSSARY.md` rows: charter, preset, parked, `auto:` decision, run report.
+- **One walkthrough page,** `docs/autonomous-mode.md`, in the style of `docs/first-feature.md`, and new `GLOSSARY.md` rows: charter, preset, parked, `auto:` decision, product agent, assumed decision, run report.
 
 #### Guardrails that never relax
 
 - **Only checks tick work.** `jsdd done` stays the only way to tick a task or AC, exactly as today.
 - **Checks are frozen at plan approval.** `jsdd done` records a hash of each task's check and of the test files its ACs name. A changed check or a weakened test after approval fails the task unless a Deviation records it and the reviewer accepted it. With nobody watching, this is the guard against an agent making tests pass by making them weaker.
 - **Protected files.** `specs/constitution.md`, `docs/intent.md`, `specs/autonomy.yml`, and the priority of any Must row in `docs/requirements.md` are never changed by a run. A hook blocks the edit.
-- **No invented decisions.** Every answer the run gives is written as an assumption or an `auto:` decision citing its charter key, never as the user's. The run report lists all of them.
+- **No invented decisions.** Every answer the run gives is written as an assumption or an `auto:` decision citing its charter key, never as the user's. A product decision also names its class and source or rule. The run report lists all of them.
 - **Budgets.** The charter caps specs per run, attempts per task, verification rounds per spec (two, as today), and wall time. The run stops cleanly at a cap and releases its claims.
 - **Isolation.** Each run works in its own worktree and branch. It never force-pushes, never rewrites history, and touches the main branch only when `merge.policy` is `auto`.
 
@@ -261,9 +292,9 @@ Alongside:
 - Parking: `jsdd park <ID> [Tn] "<reason>"` and `jsdd unpark`. A parked spec keeps its status, shows under "Waiting for you" on the board, and `jsdd next` skips it.
 - Frozen checks in `jsdd done`.
 
-**M1. One spec, end to end.** `/jsdd:auto <ID>` takes one spec from `draft` (or any later status) to `done` on a branch, with no questions, parking where it must. Adds the charter and its parser (`jsdd charter get`, `--check`), the three presets, `/jsdd:auto setup`, `--dry-run`, `jsdd auto doctor`, the protected-files hook, and the run report (`specs/runs/<date>-<n>.md`: what was done, every `auto:` decision and assumption, what was parked and why). Scenario tests drive a stub feature through `jsdd` with no prompts, and check that a bad charter is refused.
+**M1. One spec, end to end.** `/jsdd:auto <ID>` takes one spec from `draft` (or any later status) to `done` on a branch, with no questions, parking where it must. Adds the charter and its parser (`jsdd charter get`, `--check`), the three presets, `/jsdd:auto setup`, `--dry-run`, `jsdd auto doctor`, the protected-files hook, the `sdd-product` agent with `decisions.product` and its `assumed` entries in `docs/decisions.md`, and the run report (`specs/runs/<date>-<n>.md`: what was done, every `auto:` decision and assumption, what was parked and why). Scenario tests drive a stub feature through `jsdd` with no prompts, and check that a bad charter is refused.
 
-**Decision point.** Before M2, run M1 on a real project and count where runs park. If most stop at the first product question, M2 and M3 are pitched as "unattended implementation and verification" rather than "fully autonomous", and the presets change to match.
+**Decision point.** Before M2, run M1 on a real project under each preset. Count where runs park, and how many product decisions fall in each class. Then have the owner grade the assumed decisions in `docs/decisions.md` as confirmed or rejected. If `inferred` and `uncited` decisions are mostly rejected, the presets move down a class, or the order of preference changes, before the loop makes more of them unattended. If `cautious` runs mostly park at the first product question, that is the expected cost of that preset, and the walkthrough points such projects to `standard`.
 
 **M2. Unattended loop.** `/jsdd:auto` with no ID works through `jsdd next` within the charter until the queue is empty or a budget runs out, skipping parked specs. While a run is active, the Stop hook blocks stopping as long as charter work and budget remain, checking `stop_hook_active` so it never loops on a condition that will not change. `jsdd auto` starts the same loop headless (`claude -p` in a new worktree), so it can run from cron or a scheduled agent. Several runs can share a project through the existing claims. Spikes the researcher can answer and baselines join the loop. The optional per-user switch lands here.
 
@@ -276,14 +307,15 @@ What it gains:
 - **The most common complaint about SDD tools, the ceremony, goes away** for work the charter covers: you review results instead of each step.
 - **It builds on what the kit already enforces.** Checks that tick tasks, fresh-context reviewers, and claims make autonomy safer here than in a tool that relies on the agent's word.
 - **Honest and auditable.** `auto:` decisions, assumptions, and the run report show what was decided without you, and by which key.
-- **Degrades safely.** When unsure, a run parks rather than guesses; a missing charter or key means stricter, never looser.
+- **Degrades safely.** A run decides only as far as its preset allows and parks beyond that. A missing charter or key means stricter, never looser.
+- **Product docs improve as it runs.** Each assumed decision the owner confirms or rejects becomes a written decision, so later runs cite more and guess less.
 - **The foundations pay off alone.** Ideas 3 and 6, provenance, parking, and frozen checks improve interactive use even if M2 and M3 never ship.
 
 What it costs:
 
 - **It weakens the core promise.** A reviewer approving a plan is weaker than a person doing it. The reviewer and the author are the same model and can share blind spots; a fresh context only partly helps.
-- **Product decisions are where it fails quietly.** Defaults keep runs moving but make product choices for the owner, and recording them as assumptions helps only if someone reads the report. Parking everything stalls runs on real projects.
-- **Parking may be the common case.** Spec changes, manual checks, owner questions, and repeated gaps all park. On a young project with thin specs, a run may do little before it stops.
+- **The product agent makes the owner's choices.** That is the point of `standard` and `hands-off`, but it is also where they fail quietly. A grounded-sounding answer is more convincing than a bare default, and the agent shares the author's model even in a fresh context. Ordering the report by strength of basis, and logging each decision as `assumed`, helps only if someone reads them.
+- **Under `cautious`, parking may be the common case.** Owner questions, spec changes, manual checks, and repeated gaps all park. On a young project with thin docs, a run may do little before it stops. The other presets trade that for more decisions made without the owner.
 - **Weak tests are the remaining hole.** Frozen checks stop an agent weakening a test after approval, not writing a weak one before it. Only the reviewer guards that.
 - **Cost.** Reviewer passes, research, and retries spend tokens fast. Budgets cap a run, but a loose charter can still spend an evening on work that ends parked.
 - **The permission mode is outside the kit's control.** Many users will either struggle with it or set something broader than they need.
@@ -294,7 +326,9 @@ What it costs:
 
 - **Preset values.** What exactly `cautious`, `standard`, and `hands-off` set, and whether `hands-off` should allow merging at all.
 - **The enums.** The allowed values for each `decisions` key are a first cut, settled while building M1.
-- **Spec changes from verify.** Whether any preset allows `narrow-should-could`, or spec changes always park.
+- **Spec changes from verify.** Whether `standard` allows `narrow-should-could`, and whether `hands-off` should hand all spec changes to the product agent (`product`) or only narrowing.
+- **Product classes.** Whether four classes are the right cut, whether the order of preference is fixed or set in the charter, and what counts as "expensive to reverse" for the pull request list.
+- **Assumed decisions.** The format of `status: assumed` entries in `docs/decisions.md`, and whether a later run may cite an assumed decision as `cited`, or only a confirmed one.
 - **Runner.** In-session loop through the Stop hook, headless `claude -p`, or both.
 - **The pitch.** The README says "nothing moves forward without you". It needs a line on what changes when a charter exists, and the name of the mode may change after the M1 decision point.
 
