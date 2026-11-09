@@ -8,7 +8,20 @@ argument-hint: <spec ID> [task ID, e.g. T3]
 
 Arguments: $ARGUMENTS (spec ID, then an optional task ID)
 
-**Runtime mode.** Run `jsdd mode` first. The decision points below are marked with their gate, like (gate `plan.approve`). In `manual` mode every gate is `ask`: a person decides, as the step says. If the mode is anything else, stop and tell the user that this skill runs only in manual mode for now.
+**Runtime mode.** Run `jsdd mode` first. The decision points below are marked with their gate, like (gate `plan.approve`). When you reach one, `jsdd gate <gate>` gives its policy. `ask`: a person decides, as the step says; in `manual` mode every gate asks. `auto`: pass it by the gate's autopilot rule in "Autopilot rules" below, and record the decision as `auto: <gate>` with what passed it, never as a person's; when the rule cannot pass it, park. `park`: ask nobody and guess nothing. Run `jsdd park <ID> <gate> "<what a person must decide>"`, release your claims, run `jsdd status --write`, and stop (inside `/jsdd:auto`, go to its pull request step). In any mode other than `manual` and `autopilot`, stop and tell the user that this skill does not support it yet.
+
+## Autopilot rules
+
+In `autopilot` mode (see `/jsdd:auto`), these rules pass this skill's gates. Nobody is asked anything.
+
+- **Plan approval** (gate `plan.approve`): passes when the spec folder has `checks.lock` and the changelog says the current plan (or its newest amendment) was approved by `auto: plan.approve`. Otherwise, approve it as `/jsdd:plan`'s autopilot rule does (reviewer rounds, then `jsdd freeze <ID>`), or park. The changelog line for `in-progress` is "Implementing (auto: plan.approve)."
+- **Stuck** (gate `implement.stuck`):
+  - A check fails: fix the code, never the check or the assertions of the tests it runs. Up to `jsdd budget attempts_per_task` attempts (a change, then `jsdd done`). Still failing: release the task, park at `implement.stuck` with the failing output in one line.
+  - The plan is wrong: add a Deviation row starting `auto: implement.stuck:` with what changed and why, and change the design or tasks. A changed or new check needs the `sdd-reviewer` in `plan` mode, told which tasks changed and why, to raise no blocking finding; then `jsdd freeze <ID> --accept <Tn>` for a changed check, or `jsdd freeze <ID>` for a new task. Otherwise park.
+  - A decision the plan lacks: decide it only when nothing in the spec, the constitution, or `docs/decisions.md` bears on it and a user of the product would not notice the difference (a name, an internal structure); record it as a Deviation starting `auto: implement.stuck:`. Anything else parks.
+  - Something only a person can do (credentials, an account, a paid service, a device): park.
+- **Manual checks** (gate `task.manual_check`) and **spec changes** (gate `spec.change`): park.
+- **Commits** (gate `commit`): after each `jsdd done`, commit only that task's files with a message starting `[<ID>] T<n>`.
 
 ## 1. Gate
 
