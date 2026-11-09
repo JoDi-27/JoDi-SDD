@@ -10,9 +10,11 @@ root=$(git -C "${cwd:-.}" rev-parse --show-toplevel 2>/dev/null) || root=$(posix
 [ -f "$root/specs/constitution.md" ] || exit 0   # not set up with jsdd init
 runs=$(cd "$root" && CLAUDE_CODE_SESSION_ID=$sid "$(cd "$(dirname "$0")/.." && pwd)/bin/jsdd" run active 2>/dev/null | tr -d '\r')
 [ -n "$runs" ] || exit 0
-# Compare physical paths: the input may name /var/... where git says /private/var/...
+# Compare physical paths, both from pwd -P: the input may name /var/... where
+# git says /private/var/..., and in Git Bash git says C:/... where pwd says /tmp/...
 d=$(cd "$(dirname "$file")" 2>/dev/null && pwd -P) || d=$(dirname "$file")
-rel=${d#"$root"}/$(basename "$file"); rel=${rel#/}
+r=$(cd "$root" 2>/dev/null && pwd -P) || r=$root
+rel=${d#"$r"}/$(basename "$file"); rel=${rel#/}
 case $rel in
   specs/constitution.md|docs/intent.md|specs/jsdd.yml|specs/*/checks.lock) ;;
   *) exit 0 ;;
