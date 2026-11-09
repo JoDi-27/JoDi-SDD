@@ -94,3 +94,10 @@ expect "claims held in local mode are not shared: 003" bob claims
 expect "claims held in local mode are not shared: 003" bob status
 SDD_CLAIMS=local bob release 003 >/dev/null
 ! has "$(bob claims)" "local mode" || fail "the warning stayed after the local claim was released"
+
+step "an autopilot run marker stays on this machine, also in remote mode"
+printf 'version: 1\nmodes: [manual, autopilot]\n' >"$B/specs/jsdd.yml"
+(cd "$B" && CLAUDE_CODE_SESSION_ID=session-bob SDD_MODE=autopilot "$KIT/bin/jsdd" run start 001 >/dev/null) || fail "bob could not start a run"
+! git --git-dir="$TMP/origin.git" show-ref | grep -q 'refs/sdd-claims/run-' || fail "the run marker was pushed to the remote"
+SDD_CLAIMS_REUSE=0 bob claims >/dev/null
+[ "$(cd "$B" && CLAUDE_CODE_SESSION_ID=session-bob "$KIT/bin/jsdd" run active)" = 001 ] || fail "a fetch lost bob's run marker"

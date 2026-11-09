@@ -81,6 +81,20 @@ Usage: jsdd <command>
                                 validates specs/jsdd.yml (exit 1 on any problem);
                                 --explain lists every gate and its policy
   gate <gate>                   Print a gate's policy in the current mode: ask, auto, or park
+  budget <name>                 Print a run budget in the current mode (attempts_per_task,
+                                wall_time_hours)
+
+  park <ID> <gate> <reason>     Park a spec at a gate nobody can pass without a person: it
+                                keeps its status, waits on the board, and next skips it
+  unpark <ID>                   Put a parked spec back in the queue, once a person settled it
+  run start|end|status <ID>     Mark an autopilot run (/jsdd:auto) on a spec for this session;
+                                the Stop hook keeps the session going while it has work left
+  run active | stop-check       The specs this session runs; whether it may stop now
+  freeze <ID> [--accept <Tn>...]
+                                Record each task's check in checks.lock; done then refuses a
+                                task whose check changed. --accept needs a Deviation naming it
+  pr <ID> [--title]             Print a pull request body (or title) from the spec, evidence,
+                                deviations, and run report
 
 Claims stop parallel sessions from picking the same work. They live in the git
 common dir, so every worktree on this machine shares them, and are never committed.
@@ -208,9 +222,9 @@ count() {
 
 # records: one tab-separated line per spec:
 # id, type, status, phase, depends_on, done, total, open questions, title, dir,
-# spec claim ("-" if none), task note ("-" if none)
+# spec claim ("-" if none), task note ("-" if none), parked ("<gate>: <reason>", or "-")
 records() {
-  local d spec id type status phase deps title progress done total open num sclaim tnote
+  local d spec id type status phase deps title progress done total open num sclaim tnote parked
   for d in "$SPECS_DIR"/[0-9][0-9][0-9]-*/; do
     [ -d "$d" ] || continue
     d=${d%/}
@@ -235,9 +249,10 @@ records() {
     # An approved spec change sends the spec back to draft for /jsdd:specify, then /jsdd:plan.
     if [ "$status" = draft ] && [ -f "$d/verify-report.md" ] &&
       uncomment "$d/verify-report.md" | grep -q '^\*\*Decision:\*\* approved'; then tnote="verify spec change"; fi
-    printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+    parked=$(fm "$spec" parked | tr '\t' ' ')
+    printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
       "$id" "${type:--}" "${status:--}" "${phase:--}" "${deps:--}" "$done" "$total" "$open" "$title" "$(basename "$d")" \
-      "$sclaim" "${tnote:--}"
+      "$sclaim" "${tnote:--}" "${parked:--}"
   done
 }
 
@@ -645,7 +660,8 @@ board() {
       prog = ($7 > 0) ? $6 "/" $7 : "-"
       if ($12 == "all tasks done") { prog = prog " ready to verify"; ready[$3]++ }
       t = $9; gsub(/\|/, "\\|", t)   # a | would end the table cell
-      printf "| %s | %s | %s | %s | %s | %s | %s | [%s](%s/) |\n", $1, $2, $3, $4, prog, ($8 > 0 ? $8 : ""), ($5 == "-" ? "" : $5), t, $10
+      st = $3; if ($13 != "-") { st = st ", parked"; parked++ }
+      printf "| %s | %s | %s | %s | %s | %s | %s | [%s](%s/) |\n", $1, $2, st, $4, prog, ($8 > 0 ? $8 : ""), ($5 == "-" ? "" : $5), t, $10
       n[$3]++; total++
     }
     END {
@@ -657,6 +673,7 @@ board() {
         if (ready[order[i]]) printf " (%d ready to verify)", ready[order[i]]
         printf ","
       }
+      if (parked) printf " %d parked,", parked
       print ""
     }' | sed -e '$ s/,$//'
 }
@@ -664,7 +681,7 @@ board() {
 # next: specs that are not finished and whose dependencies are all done.
 next_up() {
   records | sort | awk -F '\t' '
-    { id[NR] = $1; st[$1] = $3; deps[$1] = $5; title[$1] = $9; open[$1] = $8; type[$1] = $2; sclaim[$1] = $11; tnote[$1] = $12 }
+    { id[NR] = $1; st[$1] = $3; deps[$1] = $5; title[$1] = $9; open[$1] = $8; type[$1] = $2; sclaim[$1] = $11; tnote[$1] = $12; parked[$1] = $13 }
     END {
       rank["in-progress"] = 1; rank["planned"] = 2; rank["approved"] = 3; rank["draft"] = 4
       for (r = 1; r <= 4; r++) for (i = 1; i <= NR; i++) {
@@ -672,6 +689,7 @@ next_up() {
         waiting = ""
         if (deps[k] != "-") { m = split(deps[k], d, ","); for (j = 1; j <= m; j++) if (st[d[j]] != "done") waiting = waiting " " d[j] }
         if (waiting != "") { blockedby[k] = waiting; continue }
+        if (parked[k] != "-") continue
         if (sclaim[k] != "-") {
           hint = "claimed " sclaim[k]
           if (type[k] == "spike") hint = hint "; add notes to its Inbox"
@@ -688,6 +706,10 @@ next_up() {
         printf "  %-4s %-11s %-60s %s\n", k, st[k], substr(title[k], 1, 60), hint; shown++
       }
       if (!shown) print "  (nothing actionable; create a spec with /jsdd:specify)"
+      for (i = 1; i <= NR; i++) if (parked[id[i]] != "-" && st[id[i]] != "done" && st[id[i]] != "dropped") {
+        if (!waitshown++) print "Waiting for you:"
+        printf "  %-4s parked at %s; settle it, then: jsdd unpark %s\n", id[i], parked[id[i]], id[i]
+      }
       for (i = 1; i <= NR; i++) {
         k = id[i]
         if (k in blockedby) printf "  %-4s waiting on%s\n", k, blockedby[k]
@@ -757,7 +779,7 @@ check_of() {
 # spec has no tasks: its acceptance criteria in spec.md are ticked the same way.
 cmd_done() {
   [ $# -ge 2 ] || { usage >&2; exit 1; }
-  local id dir f t ac="" row tab n line cmd note="" rc tmp crlf
+  local id dir f t ac="" row tab n line cmd note="" rc tmp crlf frozen
   id=$(norm_id "$1")
   case $2 in [Aa][Cc]*) ac=1; t=$(norm_ac "$2") ;; *) t=$(norm_task "$2") ;; esac
   shift 2
@@ -792,6 +814,17 @@ cmd_done() {
     echo "$id $t is already ticked" >&2; exit 1 ;;
   esac
   cmd=$(check_of "$line")
+  # Checks frozen at plan approval (see "freeze") cannot change quietly.
+  if [ -z "$ac" ] && [ -f "$dir/checks.lock" ]; then
+    frozen=$(lock_get "$dir/checks.lock" "$t")
+    if [ -z "$frozen" ]; then
+      echo "$id $t is not in checks.lock: have the reviewer approve the new task, then run: jsdd freeze $id" >&2; exit 1
+    elif [ "$frozen" != "${cmd:-manual}" ]; then
+      echo "the check of $id $t changed since the plan was approved: frozen \`$frozen\`, now \`${cmd:-manual}\`." >&2
+      echo "Put the frozen check back, or record a Deviation naming $t and run: jsdd freeze $id --accept $t" >&2
+      exit 1
+    fi
+  fi
 
   if [ -n "$cmd" ]; then
     [ -z "$note" ] || { echo "$id $t has a check command; --manual is only for manual checks" >&2; exit 1; }
@@ -1131,33 +1164,44 @@ cmd_capabilities() {
 # picks one with $SDD_MODE. A mode that needs consent is never a project
 # default. Anything invalid falls back to manual, so a mistake asks more, never less.
 # $SDD_PREVIEW_MODES=1 lets a mode that is not available yet resolve, for the
-# kit's own tests: the skills still stop in any mode but manual.
+# kit's own tests: the skills still stop in a mode they do not support.
+# autopilot: the person authors and approves the spec, then /jsdd:auto runs
+# plan, implement, and verify to a pull request with nobody asked; what no
+# machine check can settle parks (see "parking" and "autopilot runs" below).
 
 MODES_FILE="$SPECS_DIR/jsdd.yml"
 MODES_REL="specs/jsdd.yml"
 
 # mode  needs-consent  available-in-this-version
 MODE_TABLE='manual      no   yes
-autonomous  yes  no'
+autonomous  yes  no
+autopilot   yes  yes'
 
 # gate, allowed policies, the policy in each mode of MODE_TABLE (in order), then
 # what it decides and which skills reach it. A new mode adds a column; a new gate a row.
-GATES='spec.split               ask|auto|park  ask  auto  Split a spec larger than a few days into several (specify)
-spec.clarify             ask|auto|park  ask  park  Answer a [NEEDS CLARIFICATION] question about behavior (specify)
-depends.override         ask|park       ask  park  Go ahead while a spec in depends_on is not done (plan, spike)
-spec.approve             ask|auto|park  ask  auto  Approve a spec for planning (plan)
-plan.approve             ask|auto|park  ask  auto  Approve a plan or amendment for implementing (implement)
-implement.stuck          ask|auto|park  ask  auto  Fix a failing check, a wrong plan, or a decision the plan lacks (implement)
-spec.change              ask|park       ask  park  Change behavior, scope, or ACs of an approved spec (implement, verify)
-task.manual_check        ask|park       ask  park  Do a check: manual: on a task or acceptance criterion (implement, verify)
-commit                   ask|auto       ask  auto  Commit each finished task (implement)
-verify.gaps              ask|auto|park  ask  auto  Approve, change, or drop the fixes a verification proposes (verify, plan)
-verify.gap_option        ask|auto|park  ask  auto  Pick one option on a gap that has several (verify, plan)
-verify.partial_ref       ask|auto|park  ask  auto  Split or drop a requirement the work only partly delivers (verify)
-verify.capability_merge  ask|auto|park  ask  auto  Merge into a capability entry another spec changed since approval (verify)
-baseline.rows            ask|auto|park  ask  auto  Confirm the behavior rows a survey found (baseline)
-spike.question           ask|park       ask  park  Answer a spike question only the owner can answer (spike)
-merge                    ask|auto|park  ask  park  Merge finished work into the main branch (none yet)'
+GATES='spec.split               ask|auto|park  ask  auto  ask   Split a spec larger than a few days into several (specify)
+spec.clarify             ask|auto|park  ask  park  ask   Answer a [NEEDS CLARIFICATION] question about behavior (specify)
+depends.override         ask|park       ask  park  park  Go ahead while a spec in depends_on is not done (plan, spike)
+spec.approve             ask|auto|park  ask  auto  auto  Approve a spec for planning (plan)
+plan.approve             ask|auto|park  ask  auto  auto  Approve a plan or amendment for implementing (implement)
+implement.stuck          ask|auto|park  ask  auto  auto  Fix a failing check, a wrong plan, or a decision the plan lacks (implement)
+spec.change              ask|park       ask  park  park  Change behavior, scope, or ACs of an approved spec (implement, verify)
+task.manual_check        ask|park       ask  park  park  Do a check: manual: on a task or acceptance criterion (implement, verify)
+commit                   ask|auto       ask  auto  auto  Commit each finished task (implement)
+verify.gaps              ask|auto|park  ask  auto  auto  Approve, change, or drop the fixes a verification proposes (verify, plan)
+verify.gap_option        ask|auto|park  ask  auto  auto  Pick one option on a gap that has several (verify, plan)
+verify.partial_ref       ask|auto|park  ask  auto  park  Split or drop a requirement the work only partly delivers (verify)
+verify.capability_merge  ask|auto|park  ask  auto  park  Merge into a capability entry another spec changed since approval (verify)
+baseline.rows            ask|auto|park  ask  auto  ask   Confirm the behavior rows a survey found (baseline)
+spike.question           ask|park       ask  park  ask   Answer a spike question only the owner can answer (spike)
+merge                    ask|auto|park  ask  park  park  Merge finished work into the main branch (none yet: autopilot stops at a pull request)
+pr.open                  ask|auto|park  ask  auto  auto  Push the run branch and open a pull request for review (auto)'
+
+# Budgets cap an unattended run: name, lowest, highest, default, what it caps.
+# A mode section in specs/jsdd.yml may set them, like its gates.
+BUDGETS='attempts_per_task  1  10  3  Tries at one task, or at fixing one failing check, before it parks
+wall_time_hours    1  24  4  Hours an autopilot run may take before it stops and says where it is'
+budget_row() { printf '%s\n' "$BUDGETS" | awk -v b="$1" '$1 == b'; }
 
 mode_names() { printf '%s\n' "$MODE_TABLE" | awk '{ printf "%s%s", (NR > 1 ? ", " : ""), $1 }'; }
 # mode_field <mode> <2|3>: needs-consent or available; empty for an unknown mode.
@@ -1204,7 +1248,7 @@ config_get() { printf '%s\n' "$CONFIG" | awk -F '\t' -v s="$1" -v k="$2" '$1 == 
 # list_items <[a, b]>: one item per line; fails unless the value is an inline list.
 list_items() {
   case $1 in \[*\]) ;; *) return 1 ;; esac
-  printf '%s' "$1" | sed 's/^\[//; s/\]$//' | tr ',' '\n' | sed 's/^[ \t]*//; s/[ \t]*$//' | sed '/^$/d'
+  printf '%s' "$1" | sed 's/^\[//; s/\]$//' | tr ',' '\n' | sed 's/^[[:space:]]*//; s/[[:space:]]*$//' | sed '/^$/d'
 }
 # mode_allowed <mode>: manual always; any other mode only when modes: lists it.
 mode_allowed() {
@@ -1247,7 +1291,10 @@ config_errors() {
           esac
         else
           row=$(gate_row "$k")
-          if [ -z "$row" ]; then echo "$f:$n: unknown gate '$k' in $s (see: jsdd mode --explain)"
+          if [ -z "$row" ] && [ -n "$(budget_row "$k")" ]; then
+            budget_row "$k" | { read -r _ lo hi _; case $v in ""|*[!0-9]*) false ;; *) [ "$v" -ge "$lo" ] && [ "$v" -le "$hi" ] ;; esac; } \
+              || echo "$f:$n: $s.$k: '$v' is not a whole number from $(budget_row "$k" | awk '{ print $2 " to " $3 }')"
+          elif [ -z "$row" ]; then echo "$f:$n: unknown gate '$k' in $s (gates and budgets: jsdd mode --explain)"
           else
             allowed=$(printf '%s' "$row" | awk '{ print $2 }')
             case "|$allowed|" in *"|$v|"*) ;; *) echo "$f:$n: $s.$k: '$v' is not one of $(printf '%s' "$allowed" | sed 's/|/, /g')" ;; esac
@@ -1326,7 +1373,15 @@ cmd_mode() {
         p=$(gate_policy "$g" "$MODE"); over=""
         [ "$MODE" = manual ] || [ -z "$(config_get "$MODE" "$g")" ] || over=" [set in $MODES_REL]"
         printf '%-24s %-6s %s%s\n' "$g" "$p" "$(gate_row "$g" | awk -v c="$(( $(printf '%s\n' "$MODE_TABLE" | wc -l) + 3 ))" '{ for (i = c; i <= NF; i++) printf "%s%s", $i, (i < NF ? " " : "") }')" "$over"
-      done ;;
+      done
+      if [ "$MODE" != manual ]; then
+        echo
+        printf '%-24s %-6s %s\n' BUDGET VALUE "WHAT IT CAPS"
+        printf '%s\n' "$BUDGETS" | while read -r g _ _ _ p; do
+          over=""; [ -z "$(config_get "$MODE" "$g")" ] || over=" [set in $MODES_REL]"
+          printf '%-24s %-6s %s%s\n' "$g" "$(budget_value "$g")" "$p" "$over"
+        done
+      fi ;;
     *) echo "usage: jsdd mode [--check | --explain]" >&2; exit 1 ;;
   esac
 }
@@ -1336,6 +1391,270 @@ cmd_gate() {
   [ -n "$(gate_row "$1")" ] || { echo "unknown gate '$1' (gates: jsdd mode --explain)" >&2; exit 2; }
   resolve_mode
   gate_policy "$1" "$MODE"
+}
+
+# budget_value <budget>: the project's value for the current mode, else the default.
+budget_value() {
+  local v=""
+  [ -n "$CONFIG_ERRORS" ] || v=$(config_get "$MODE" "$1")
+  if [ -n "$v" ]; then echo "$v"; else budget_row "$1" | awk '{ print $4 }'; fi
+}
+
+cmd_budget() {
+  [ $# -eq 1 ] && [ -n "$(budget_row "$1")" ] \
+    || { echo "usage: jsdd budget <$(printf '%s\n' "$BUDGETS" | awk '{ printf "%s%s", (NR > 1 ? "|" : ""), $1 }')>" >&2; exit 1; }
+  resolve_mode
+  budget_value "$1"
+}
+
+# --- frontmatter and changelog edits -----------------------------------------
+
+# fm_set <file> <key> [value]: set a flat frontmatter key to a quoted value, or
+# remove it when no value is given. A CRLF file stays CRLF.
+fm_set() {
+  local f=$1 tmp="$1.tmp.$$" crlf=0 v="" set=""
+  [ "$(tr -cd '\r' <"$f" | wc -c)" -gt 0 ] && crlf=1
+  if [ $# -ge 3 ]; then set=1; v=$(printf '%s' "$3" | tr '\r\n' '  ' | sed -e 's/[\\"]/\\&/g'); fi
+  K="$2" V="$v" SET="$set" awk -v crlf="$crlf" '
+    function out(s) { printf "%s%s\n", s, (crlf ? "\r" : "") }
+    function put() { if (ENVIRON["SET"] != "" && !done) out(ENVIRON["K"] ": \"" ENVIRON["V"] "\""); done = 1 }
+    { sub(/\r$/, "") }
+    NR == 1 && $0 == "---" { infm = 1; out($0); next }
+    infm && $0 == "---" { put(); infm = 0; out($0); next }
+    infm && index($0, ENVIRON["K"] ":") == 1 { put(); next }
+    { out($0) }' "$f" > "$tmp" && mv "$tmp" "$f"
+}
+
+# changelog_add <spec.md> <text>: append "- <date> <text>" to the Changelog section.
+changelog_add() {
+  local f=$1 tmp="$1.tmp.$$" crlf=0
+  [ "$(tr -cd '\r' <"$f" | wc -c)" -gt 0 ] && crlf=1
+  LINE="- $(date +%F) $2" awk -v crlf="$crlf" '
+    function out(s) { printf "%s%s\n", s, (crlf ? "\r" : "") }
+    function blanks() { for (i = 1; i <= nb; i++) out(""); nb = 0 }
+    function flush() { if (on && !added) { out(ENVIRON["LINE"]); added = 1 } blanks() }
+    { sub(/\r$/, "") }
+    /^## / { flush(); on = ($0 == "## Changelog") }
+    $0 == "" { nb++; next }
+    { blanks(); out($0) }
+    END { flush(); if (!added) { out(""); out("## Changelog"); out(""); out(ENVIRON["LINE"]) } }' "$f" > "$tmp" && mv "$tmp" "$f"
+}
+
+# --- parking ---------------------------------------------------------------
+# A gate that no machine check can pass parks the spec: nobody is asked and
+# nothing is guessed. The spec keeps its status, gets a "parked" frontmatter
+# line and a changelog line, shows under "Waiting for you" on the board, and
+# "next" skips it until a person settles the question and runs unpark.
+
+cmd_park() {
+  [ $# -ge 3 ] || { echo "usage: jsdd park <ID> <gate> <reason>" >&2; exit 1; }
+  local id dir gate reason
+  id=$(norm_id "$1"); gate=$2; shift 2; reason="$*"
+  [ -n "$(gate_row "$gate")" ] || { echo "unknown gate '$gate' (gates: jsdd mode --explain)" >&2; exit 1; }
+  dir=$(spec_dir "$id")
+  resolve_mode
+  fm_set "$dir/spec.md" parked "$gate: $reason"
+  changelog_add "$dir/spec.md" "Parked at gate $gate: $reason$([ "$MODE" = manual ] || echo " (auto: $MODE)")"
+  echo "parked $id at $gate: $reason"
+  echo "it waits for a person; once settled: jsdd unpark $id"
+}
+
+cmd_unpark() {
+  [ $# -eq 1 ] || { echo "usage: jsdd unpark <ID>" >&2; exit 1; }
+  local id dir
+  id=$(norm_id "$1"); dir=$(spec_dir "$id")
+  [ -n "$(fm "$dir/spec.md" parked)" ] || { echo "$id is not parked"; return; }
+  fm_set "$dir/spec.md" parked
+  changelog_add "$dir/spec.md" "Unparked."
+  echo "unparked $id"
+}
+
+# --- autopilot runs --------------------------------------------------------
+# /jsdd:auto <ID> takes one authored spec to a pull request in autopilot mode.
+# "run start" marks the run, in the claims folder as run-<ID>, owned by this
+# session; the Stop hook asks "run stop-check" whether the session may stop:
+# not while its run has work left, budget left, and is making progress.
+
+# A run marker belongs to one session on this machine, so it always lives in
+# the local claims folder, also in remote-claims mode (bash's dynamic scope
+# makes the claim helpers called from here see these locals).
+
+# my_runs: the spec IDs of the runs this session holds.
+my_runs() {
+  local c CLAIMS="$LOCAL_CLAIMS"
+  for c in "$CLAIMS"/run-*/; do
+    [ -d "$c" ] || continue
+    c=${c%/}
+    if [ "$(sed -n 's/^owner=//p' "$c/owner" 2>/dev/null | head -1)" = "$ME" ]; then basename "$c" | cut -c5-; fi
+  done
+  return 0
+}
+
+# progress_mark: changes whenever the run commits, edits, or ticks anything.
+progress_mark() {
+  (cd "$ROOT" && { git rev-parse HEAD 2>/dev/null; git status --porcelain 2>/dev/null; git diff HEAD 2>/dev/null; } | cksum)
+}
+
+# run_hours_left <ID>: whole hours left in the run's wall-time budget (0 or less: spent).
+run_hours_left() {
+  local since now
+  local CLAIMS="$LOCAL_CLAIMS"
+  now=$(date +%s); since=$(claim_get "run-$1" since)
+  echo $(( $(budget_value wall_time_hours) - ( now - ${since:-$now} ) / 3600 ))
+}
+
+cmd_run() {
+  local sub=${1:-} id dir r again=0 st parked CLAIMS="$LOCAL_CLAIMS" CLAIMS_MODE=local
+  case $sub in
+    start)
+      [ $# -eq 2 ] || { echo "usage: jsdd run start <ID>" >&2; exit 1; }
+      id=$(norm_id "$2"); dir=$(spec_dir "$id"); r="run-$id"
+      resolve_mode
+      if [ "$MODE" != autopilot ]; then
+        echo "an autopilot run needs autopilot mode; the mode is $MODE${MODE_WARN:+ ($MODE_WARN)}." >&2
+        echo "Allow it in $MODES_REL (modes: [manual, autopilot]) and set SDD_MODE=autopilot." >&2
+        exit 1
+      fi
+      parked=$(fm "$dir/spec.md" parked)
+      [ -z "$parked" ] || { echo "$id is parked: $parked. Settle it, then: jsdd unpark $id" >&2; exit 1; }
+      if [ -d "$CLAIMS/$r" ]; then
+        if mine "$r"; then echo "run $id already started by you ($(run_hours_left "$id")h left)"; return; fi
+        echo "run $id is held $(claim_desc "$r")" >&2; exit 1
+      fi
+      claim_take "$r" || { echo "run $id is held $(claim_desc "$r")" >&2; exit 1; }
+      printf 'branch=%s\n' "$(cd "$ROOT" && git rev-parse --abbrev-ref HEAD 2>/dev/null || echo -)" >> "$CLAIMS/$r/owner"
+      echo "run $id started: $(budget_value wall_time_hours)h, $(budget_value attempts_per_task) attempts per task" ;;
+    end)
+      [ $# -ge 2 ] || { echo "usage: jsdd run end <ID> [--force]" >&2; exit 1; }
+      id=$(norm_id "$2"); r="run-$id"
+      [ -d "$CLAIMS/$r" ] || { echo "no run on $id"; return; }
+      if [ "${3:-}" != --force ] && ! mine "$r"; then
+        echo "run $id is held $(claim_desc "$r"); use --force if that session is gone" >&2; exit 1
+      fi
+      rm -rf "${CLAIMS:?}/$r"; echo "run $id ended" ;;
+    status)
+      [ $# -eq 2 ] || { echo "usage: jsdd run status <ID>" >&2; exit 1; }
+      id=$(norm_id "$2"); dir=$(spec_dir "$id"); r="run-$id"
+      resolve_mode
+      [ -d "$CLAIMS/$r" ] || { echo "no run on $id" >&2; exit 1; }
+      st=$(fm "$dir/spec.md" status); parked=$(fm "$dir/spec.md" parked)
+      echo "run $id $(claim_desc "$r"), on branch $(claim_get "$r" branch); spec $st${parked:+, parked at $parked}"
+      if [ "$(run_hours_left "$id")" -le 0 ]; then
+        echo "wall-time budget spent ($(budget_value wall_time_hours)h): stop, write the run report, and end the run" >&2; exit 1
+      fi
+      echo "$(run_hours_left "$id")h left of $(budget_value wall_time_hours)h; $(budget_value attempts_per_task) attempts per task" ;;
+    active) my_runs ;;
+    stop-check)
+      # Prints "block: <reason>" while this session's run must go on, else
+      # "allow: <note>" or nothing. --again: the session is already continuing
+      # because of an earlier block (the Stop hook's stop_hook_active).
+      [ "${2:-}" != --again ] || again=1
+      resolve_mode
+      for id in $(my_runs); do
+        r="run-$id"; dir=$(spec_dir "$id" 2>/dev/null) || continue
+        if [ $again = 1 ] && [ "$(cat "$CLAIMS/$r/mark" 2>/dev/null)" = "$(progress_mark)" ]; then
+          echo "allow: the autopilot run on $id made no progress since it was told to go on; it stops here. Resume with /jsdd:auto $id, or end it with: jsdd run end $id"; continue
+        fi
+        progress_mark > "$CLAIMS/$r/mark"
+        parked=$(fm "$dir/spec.md" parked)
+        if [ -n "$parked" ]; then
+          echo "block: The autopilot run on $id parked at $parked. Finish the /jsdd:auto $id run without asking anyone: the run report, the draft pull request, then: jsdd run end $id"
+        elif [ "$(run_hours_left "$id")" -le 0 ]; then
+          echo "block: The autopilot run on $id spent its wall-time budget. Stop building and finish the /jsdd:auto $id run: the run report, a draft pull request, then: jsdd run end $id"
+        else
+          echo "block: The autopilot run on $id is not finished (spec $(fm "$dir/spec.md" status)). Keep going with the /jsdd:auto $id steps without asking anyone: plan, implement, verify, then open the pull request. If a gate cannot pass, park it: jsdd park $id <gate> \"<reason>\". When the run is done or parked, write the run report and run: jsdd run end $id"
+        fi
+        return 0
+      done ;;
+    *) echo "usage: jsdd run <start|end|status|active|stop-check> [ID]" >&2; exit 1 ;;
+  esac
+}
+
+# --- frozen checks ---------------------------------------------------------
+# With nobody watching, an agent could make a failing task pass by weakening its
+# check. "freeze" records each task's check in checks.lock in the spec folder
+# when its plan is approved; "done" then refuses a task whose check changed, or
+# a task the lock does not know, until freeze records it again. A changed check
+# needs --accept and a Deviation row in plan.md that names the task.
+
+# task_checks <tasks.md>: one line per task: ID, TAB, its check command or "manual".
+task_checks() {
+  local t row cmd tab
+  tab=$(printf '\t')
+  for t in $(task_rows 000 "$1" | awk '{ print $1 }'); do
+    row=$(task_line "$1" "$t"); cmd=$(check_of "${row#*"$tab"}")
+    printf '%s\t%s\n' "$t" "${cmd:-manual}"
+  done
+}
+
+# lock_get <checks.lock> <Tn>: the frozen check, or nothing.
+lock_get() {
+  [ -f "$1" ] || return 0
+  awk -v t="$2" '{ sub(/\r$/, "") } index($0, t "\t") == 1 { print substr($0, length(t) + 2); exit }' "$1"
+}
+
+cmd_freeze() {
+  [ $# -ge 1 ] || { echo "usage: jsdd freeze <ID> [--accept <Tn>...]" >&2; exit 1; }
+  local id dir lock t cmd old accept=" " changed="" checks devs tab total added=0
+  id=$(norm_id "$1"); shift
+  if [ "${1:-}" = --accept ]; then shift; for t in "$@"; do accept="$accept$(norm_task "$t") "; done; fi
+  dir=$(spec_dir "$id"); lock="$dir/checks.lock"; tab=$(printf '\t')
+  [ -f "$dir/tasks.md" ] || { echo "$id has no tasks.md" >&2; exit 1; }
+  checks=$(task_checks "$dir/tasks.md")
+  devs=$(section "$dir/plan.md" Deviations)
+  while IFS="$tab" read -r t cmd; do
+    [ -n "$t" ] || continue
+    old=$(lock_get "$lock" "$t")
+    if [ -z "$old" ]; then added=$((added + 1)); continue; fi
+    [ "$old" != "$cmd" ] || continue
+    case $accept in
+      *" $t "*)
+        printf '%s\n' "$devs" | grep -Eq "(^|[^0-9A-Za-z])$t([^0-9]|\$)" \
+          || { echo "$t: --accept needs a row in plan.md's Deviations that names $t" >&2; exit 1; } ;;
+      *) changed="$changed  $t: frozen \`$old\`, now \`$cmd\`
+" ;;
+    esac
+  done <<CHECKS
+$checks
+CHECKS
+  if [ -n "$changed" ]; then
+    printf 'checks changed since they were frozen:\n%s' "$changed" >&2
+    echo "Record a Deviation naming each task, have the reviewer accept it, then: jsdd freeze $id --accept <Tn>..." >&2
+    exit 1
+  fi
+  { echo "# Checks frozen when the plan was approved, by jsdd freeze. jsdd done refuses a task whose check differs."
+    printf '%s\n' "$checks"; } > "$lock"
+  total=$(printf '%s\n' "$checks" | grep -c . || true)
+  echo "froze the checks of $id: $total tasks, $added new, in ${lock#"$ROOT"/}"
+}
+
+# --- pull request body -----------------------------------------------------
+
+# section <file> <heading>: the lines under "## <heading>" up to the next "## ", outside comments, trimmed.
+section() {
+  [ -f "$1" ] || return 0
+  uncomment "$1" | H="## $2" awk '
+    /^## / { on = ($0 == ENVIRON["H"]); next }
+    on { if ($0 == "") { nb++; next } if (shown) for (i = 0; i < nb; i++) print ""; nb = 0; print; shown = 1 }'
+}
+
+cmd_pr() {
+  [ $# -ge 1 ] || { echo "usage: jsdd pr <ID> [--title]" >&2; exit 1; }
+  local id dir spec rel out refs parked
+  id=$(norm_id "$1"); dir=$(spec_dir "$id"); spec="$dir/spec.md"; rel=${dir#"$ROOT"/}
+  if [ "${2:-}" = --title ]; then echo "[$id] $(fm "$spec" title)"; return; fi
+  refs=$(fm "$spec" refs | tr -d "[]\"'"); parked=$(fm "$spec" parked)
+  printf 'Spec [%s](%s/spec.md) · %s · status %s%s\n' "$id" "$rel" "$(fm "$spec" type)" "$(fm "$spec" status)" "${refs:+ · refs $refs}"
+  [ -z "$parked" ] || printf '\n> **Parked at %s.** A person must settle this before merging.\n' "$parked"
+  out=$(section "$spec" Problem); [ -z "$out" ] || printf '\n## Why\n\n%s\n' "$out"
+  out=$(section "$spec" Requirements); [ -z "$out" ] || printf '\n## Requirements\n\n%s\n' "$out"
+  out=$(section "$dir/tasks.md" Evidence); [ -z "$out" ] || printf '\n## Acceptance criteria and evidence\n\n%s\n' "$out"
+  out=$(section "$dir/tasks.md" Tasks | grep -E '^[[:space:]]*- \[[ xX]\]' || true)
+  [ -z "$out" ] || printf '\n## Tasks\n\n%s\n' "$out"
+  out=$(section "$dir/plan.md" Deviations); [ -z "$out" ] || printf '\n## Deviations from the plan\n\n%s\n' "$out"
+  out=$(section "$dir/run-report.md" 'Decisions made without a person'); [ -z "$out" ] || printf '\n## Decisions made without a person\n\n%s\n' "$out"
+  [ ! -f "$dir/run-report.md" ] || printf '\nRun report: [%s/run-report.md](%s/run-report.md)\n' "$rel" "$rel"
+  return 0
 }
 
 cmd_status() {
@@ -1628,6 +1947,12 @@ case "${1:-}" in
   capabilities) shift; cmd_capabilities "$@" ;;
   mode) shift; cmd_mode "$@" ;;
   gate) shift; cmd_gate "$@" ;;
+  budget) shift; cmd_budget "$@" ;;
+  park) shift; cmd_park "$@" ;;
+  unpark) shift; cmd_unpark "$@" ;;
+  run) shift; cmd_run "$@" ;;
+  freeze) shift; cmd_freeze "$@" ;;
+  pr) shift; cmd_pr "$@" ;;
   -h|--help|help|"") usage ;;
   *) echo "unknown command '$1'" >&2; usage >&2; exit 1 ;;
 esac

@@ -1,8 +1,14 @@
 {
   "hooks": {
     "SessionStart": [{ "hooks": [{ "type": "command", "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/session-start.sh\"" }] }],
-    "PreToolUse": [{ "matcher": "Bash", "hooks": [{ "type": "command", "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/pre-commit-message.sh\"" }] }],
+    "PreToolUse": [
+      { "matcher": "Bash", "hooks": [{ "type": "command", "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/pre-commit-message.sh\"" }] },
+      { "matcher": "Edit|Write", "hooks": [{ "type": "command", "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/protect-run-files.sh\"" }] }
+    ],
     "PostToolUse": [{ "matcher": "Edit|Write", "hooks": [{ "type": "command", "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/post-edit-status.sh\"" }] }],
-    "Stop": [{ "hooks": [{ "type": "command", "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/stop-claims.sh\"" }] }]
+    "Stop": [
+      { "hooks": [{ "type": "command", "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/stop-autopilot.sh\"" }] },
+      { "hooks": [{ "type": "command", "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/stop-claims.sh\"" }] }
+    ]
   }
 }

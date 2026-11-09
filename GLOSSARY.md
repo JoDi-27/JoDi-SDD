@@ -8,6 +8,7 @@ One line per term, alphabetical. The full reference for statuses, IDs, and file 
 | Agent | A subagent that runs in its own context: `sdd-reviewer` checks plans and verdicts, `spike-researcher` writes briefings, `sdd-surveyor` reads existing code. |
 | Amendment (A1, A2, …) | A section added to `plan.md` after verification found gaps, saying what each gap became. |
 | Approval | Running the next command. There is no separate approve action. |
+| Autopilot | A runtime mode: you write and approve a spec, and `/jsdd:auto <ID>` plans, implements, and verifies it and opens a pull request without asking you anything. What it cannot settle parks. |
 | Backlog (`BACKLOG.md`) | Open decisions with a suggested default, spikes with their questions, and work for later. |
 | Baseline | A spec that records how an existing area of code works today, checked by its existing tests. |
 | Board | The progress view of every spec and what to do next. Printed by `/jsdd:status` and at session start; saved as `specs/STATUS.md`. |
@@ -25,12 +26,14 @@ One line per term, alphabetical. The full reference for statuses, IDs, and file 
 | Evidence | The recorded result of each acceptance criterion's check, kept in `tasks.md`. |
 | Feature | A spec for building something. Goes through specify, plan, implement, verify. |
 | Fresh context | A subagent that never saw the session that wrote the work, so it judges only what is on disk. |
+| Frozen check | A task's check as recorded in `checks.lock` when an autopilot plan was approved. `jsdd done` refuses a task whose check changed, unless a Deviation names it. |
 | Gap (G1, G2, …) | Something verification found that the code or spec doesn't satisfy, with a proposed fix, in `verify-report.md`. |
 | Gate | A named point where a skill waits for a person, like `spec.approve` or `verify.gaps`. The runtime mode says whether it asks, passes on its own, or parks. |
 | Hook | A script Claude Code runs on its own: prints the board, regenerates `STATUS.md`, blocks commits without a spec ID, warns about held claims. Loads at session start. |
 | Intent (`docs/intent.md`) | What you are building, for whom, and why. |
 | jsdd | The bash script behind every command. `jsdd help` lists its subcommands. |
 | Needs clarification | `[NEEDS CLARIFICATION: …]`: an unknown written down instead of guessed. Plan won't start while any remain. |
+| Parked | A spec waiting at a gate only a person can pass, with the reason in its `parked:` frontmatter. It keeps its status, shows under "Waiting for you", and `jsdd next` skips it until `jsdd unpark`. |
 | Phase | A numbered stage in `PLAN.md`. Phase 0 is spikes and foundations, Phase 1 the first version or next milestone. |
 | plan.md | How a spec will be built: design, decisions, constitution check, test strategy, deviations. No new requirements. |
 | Priority | On a requirement row: M Must, S Should, C Could, W Won't. |
@@ -38,9 +41,10 @@ One line per term, alphabetical. The full reference for statuses, IDs, and file 
 | Requirement (FR-AUTH-02) | A row in `docs/requirements.md` with an ID, a priority, and a source. `FR` functional, `NFR` non-functional. |
 | Requirement (R1, R2, …) | A numbered behaviour inside a spec, in EARS form, tagged with the rows it refines. |
 | Roadmap (`PLAN.md`) | Phases of work, each item tagged with the requirements it delivers. Not a spec's `plan.md`. |
-| Runtime mode | What happens at every gate. `manual`, where every gate asks, is the default and the only mode available today. Chosen with `SDD_MODE` among the modes `specs/jsdd.yml` allows. |
+| Run report (`run-report.md`) | What an autopilot run did, each decision it made without a person, and what parked. The pull request links it. |
+| Runtime mode | What happens at every gate. `manual`, where every gate asks, is the default; `autopilot` runs an authored spec to a pull request. Chosen with `SDD_MODE` among the modes `specs/jsdd.yml` allows. |
 | Session | One Claude Code conversation. Several can work on one project at once. |
-| Skill | A `/jsdd:` command. There are eight. |
+| Skill | A `/jsdd:` command. There are nine. |
 | Spec | One folder under `specs/` describing one slice of work: feature, spike, or baseline. |
 | spec.md | What and why: scenarios, requirements, acceptance criteria. No technology or code. |
 | Spec-driven development (SDD) | Writing down what work must do, in checkable form, before planning or building it. The spec is what Claude works from and is checked against. |

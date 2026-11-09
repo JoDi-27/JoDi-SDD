@@ -10,7 +10,18 @@ Spec: $ARGUMENTS
 
 You prove that the spec is met. You do not add features.
 
-**Runtime mode.** Run `jsdd mode` first. The decision points below are marked with their gate, like (gate `verify.gaps`). In `manual` mode every gate is `ask`: a person decides, as the step says. If the mode is anything else, stop and tell the user that this skill runs only in manual mode for now.
+**Runtime mode.** Run `jsdd mode` first. The decision points below are marked with their gate, like (gate `verify.gaps`). When you reach one, `jsdd gate <gate>` gives its policy. `ask`: a person decides, as the step says; in `manual` mode every gate asks. `auto`: pass it by the gate's autopilot rule in "Autopilot rules" below, and record the decision as `auto: <gate>` with what passed it, never as a person's; when the rule cannot pass it, park. `park`: ask nobody and guess nothing. Run `jsdd park <ID> <gate> "<what a person must decide>"`, release your claims, run `jsdd status --write`, and stop (inside `/jsdd:auto`, go to its pull request step). In any mode other than `manual` and `autopilot`, stop and tell the user that this skill does not support it yet.
+
+## Autopilot rules
+
+In `autopilot` mode (see `/jsdd:auto`), these rules pass this skill's gates. Nobody is asked anything; what you would report to the user goes in the run report's "For the reviewer" section.
+
+- **Manual checks** (gate `task.manual_check`): park.
+- **Gaps** (gate `verify.gaps`): the report's gaps are approved together, or the spec parks. Approve when every gap is one of: fix the code, with a check that fails on the code as it is now; or record a Deviation, when it is the reviewer's recommended option and the drift changes no behavior an R or AC describes. Park at `verify.gaps` when a gap is a repeated gap (the two-rounds rule), or its only sensible actions are changing the spec or moving it to BACKLOG.md; park at `spec.change` when the kept action changes the spec. On approval set Decision `approved (auto: verify.gaps, <date>)`, and write "(auto: verify.gaps)" at the end of the changelog line. When parking, leave Decision `pending`.
+- **Options** (gate `verify.gap_option`): take the option the reviewer marked recommended, when it is a code fix or a Deviation as above, and record `Chosen: <option> (auto: verify.gap_option, the reviewer's recommendation)`. No recommendation, or a spec change: park.
+- **Partial refs** (gate `verify.partial_ref`, parks unless the project sets `auto`): remove the ID from `refs`, add a BACKLOG.md item for the part not delivered, and record both as `auto: verify.partial_ref`.
+- **Capability merges** (gate `verify.capability_merge`, parks unless the project sets `auto`): keep every statement of the entry that this spec's Rs do not contradict, never drop one, and record the merge as `auto: verify.capability_merge` in the History row.
+- **Close** commits as `[<ID>] Close`.
 
 ## 1. Gate
 
@@ -41,7 +52,7 @@ Write `verify-report.md` in the spec folder from `${CLAUDE_PLUGIN_ROOT}/template
 
 - **Converged** (every AC passes, every R is `delivered`, no unrequested behavior, no unrecorded drift): set Outcome `converged` and Decision `none needed`, and go to step 3.
 - **Gaps found:** show the user the report and ask whether to plan the fixes (gate `verify.gaps`), and for each gap with options, which one (gate `verify.gap_option`). They can approve, change or drop actions, or stop. Record each answer on its gap in the report: `Chosen: b (<by whom>)` or `(dropped by <who>)`.
-  - **Never record a decision the user did not give.** Do not assume an answer, pick an option, or approve on the user's behalf. If you cannot get an answer (for example, in a run nobody is watching), leave Decision `pending` and the status `in-progress`, release the spec, and report that the report waits for the user; running `/jsdd:verify <ID>` again asks again.
+  - **Never record a decision the user did not give.** Do not assume an answer, pick an option, or approve on the user's behalf. In `autopilot` mode, the Autopilot rules decide instead, recorded as `auto:`, never as the user's. If you cannot get an answer (for example, in a run nobody is watching), leave Decision `pending` and the status `in-progress`, release the spec, and report that the report waits for the user; running `/jsdd:verify <ID>` again asks again.
   - **Approved:** every gap has an answer (a chosen option where it had options, or dropped). Set Decision `approved (<by whom, date>)`.
     - If no kept gap is a spec change, set `status: approved` and add a changelog line: "Verification round <n> found gaps; fixes approved, see verify-report.md." Release the spec, run `jsdd status --write`, and suggest `/jsdd:plan <ID>`, which plans the fixes as an amendment.
     - If any kept gap is a spec change (gate `spec.change`), the requirements are open again: set `status: draft` and add a changelog line: "Verification round <n> found gaps; spec changes approved (G<n>, …), see verify-report.md." Release the spec, run `jsdd status --write`, and suggest `/jsdd:specify <ID>` to revise the spec, then `/jsdd:plan <ID>`, which plans the rest as an amendment.

@@ -7,6 +7,15 @@
 - A task marked done records the branch it was done on. When a later claim on the spec comes from a checkout that does not have the tick yet, `jsdd claim` says which branch to merge or rebase onto first, in both modes.
 - New `jsdd claims --mine` lists what this session still holds. The Stop hook uses it instead of its own copy of the claims storage.
 
+## 0.7.7 (2026-11-09)
+
+- New `autopilot` mode: once you have written and approved a spec, `/jsdd:auto <ID>` runs it to a pull request with nobody asked. It plans the spec and has the `sdd-reviewer` approve the plan, implements every task until its check passes (one commit each), verifies and builds the gaps a check can fix, then pushes the branch and opens a pull request whose body comes from the spec, the evidence, and a run report. A gate only a person can pass (a spec change, a manual check, a product choice, a gap that survives two rounds, a check that keeps failing) parks the spec instead, and the run ends with a draft pull request saying what waits. Every decision the run makes is recorded as `auto: <gate>`, never as yours. The mode needs consent: the project lists it in `specs/jsdd.yml`, and each person picks it with `SDD_MODE=autopilot`.
+- New gate `pr.open`, and run budgets in `specs/jsdd.yml` (`attempts_per_task`, default 3; `wall_time_hours`, default 4), shown by `jsdd mode --explain` and printed by `jsdd budget <name>`.
+- New `jsdd park <ID> <gate> <reason>` and `jsdd unpark <ID>`: a parked spec keeps its status, shows as parked on the board and under "Waiting for you", and `jsdd next` skips it.
+- New `jsdd freeze <ID> [--accept <Tn>...]` records each task's check in `checks.lock`; `jsdd done` then refuses a task whose check changed, or a task the lock does not know, unless a Deviation names it. New `jsdd run start|end|status|active|stop-check` marks an autopilot run per session, and `jsdd pr <ID> [--title]` prints a pull request body.
+- New hooks: during an autopilot run, a Stop hook keeps the session going while the run has work, budget, and progress left, and a PreToolUse hook blocks edits to `specs/constitution.md`, `docs/intent.md`, `specs/jsdd.yml`, and `checks.lock`. The `sdd-reviewer` marks a recommended option on gaps that have several, and in plan mode for an autopilot run treats manual checks and checks that already pass as blocking.
+- Fixed: `specs/jsdd.yml` lists lost a trailing `t` on macOS (BSD sed read `[ \t]` as space, backslash, or `t`), so a mode such as `autopilot` was reported unknown.
+
 ## 0.7.6 (2026-11-09)
 
 - Runtime modes, the foundation for running the kit with less hand-holding. Every point where a skill waits for a person is now a named gate (`spec.approve`, `spec.clarify`, `plan.approve`, `verify.gaps`, and 12 more), marked in the skills. A runtime mode decides what happens at each gate: `ask`, `auto`, or `park`. `manual`, where every gate asks, is the default and behaves exactly as before. `autonomous` is reserved but not available yet.

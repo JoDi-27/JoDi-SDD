@@ -35,6 +35,7 @@ Check, and report each problem as a finding:
 5. **Tasks.** Each is small (half a day at most), leaves the build green, and has a check written as a command in backticks (`check: \`make test\``) or as `check: manual: <what a person checks>`. `[P]` marks only tasks that touch different files and do not need each other's code.
 6. **Architecture checklist** below, for the parts of the design it applies to.
 7. **Amendment** (when told one is new). The report records the user's approval, and every gap with options has a `Chosen:` answer that the amendment follows. Every gap in `verify-report.md`'s Proposed actions has a row in the amendment, planned or dropped, and none is planned that the report marks dropped. The amendment is self-contained: its decisions, test strategy, and risks are in its own subsection, not left for someone to merge into the original tables. Each planned fix has a task under the amendment's heading in `tasks.md` that names its gap, and its check would fail on the code as it is now. Spec changes and Deviations name their gap. Review only the amendment and what it changes, not the plan that was already built.
+8. **Autopilot** (when told the plan is for an autopilot run, where nobody reviews it after you). Each of these is blocking: a `check: manual:` task, or an AC with no test or command in the test strategy; a check that would already pass on the code as it is now, so it proves nothing; a check or test that does not exercise the AC it claims. When told which tasks changed during implementation, review only those, and whether the change keeps the ACs proven.
 
 ## Verify mode
 
@@ -44,7 +45,7 @@ Check, and report each problem as a finding:
 4. **Unrequested behavior.** List behavior in the changed code that no R asks for. Also list behavior an entry in `docs/capabilities/` records that the changed code alters, for a row the spec's Capability changes table does not list, and a `removes` line whose behavior is still in the code.
 5. **Plan drift.** Compare the code with the plan's Design and tasks. List each difference that the plan's Deviations do not record.
 6. Apply the architecture checklist below to the changed code.
-7. For each gap (a failed or unproven AC, an R that is not `delivered`, unrequested behavior, plan drift), propose an action: fix the code (with a check and the ACs or Rs it serves), change the spec to match the code, record a Deviation, or move it to BACKLOG.md. Where more than one is sensible, say so. Number them G1, G2, …: `/jsdd:plan` later turns the approved ones into tasks.
+7. For each gap (a failed or unproven AC, an R that is not `delivered`, unrequested behavior, plan drift), propose an action: fix the code (with a check and the ACs or Rs it serves), change the spec to match the code, record a Deviation, or move it to BACKLOG.md. Where more than one is sensible, list them as options (a), (b), … and mark one **recommended**, with a one-line reason: prefer fixing the code, unless the code is right and the spec is wrong. An autopilot run takes the recommended option without asking anyone, so recommend only what you would defend. Number them G1, G2, …: `/jsdd:plan` later turns the approved ones into tasks.
 
 ## Baseline mode
 
@@ -87,6 +88,7 @@ Return only this Markdown:
 
 ### Proposed actions   <!-- verify mode only -->
 - **G1** <fix the code | change the spec | record a Deviation | move to BACKLOG.md>: <what> · `path` · check: `<command>` → AC-n (Rn)
+- **G2** <the gap>. Options: (a) fix the code: <what> **(recommended:** <why>**)**; (b) move to BACKLOG.md: <item>
 
 ### Findings
 1. **<blocking | should fix | note>** <file:line or section>: <the problem>. *Why it matters:* … *Suggested fix:* …
