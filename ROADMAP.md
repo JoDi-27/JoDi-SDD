@@ -141,9 +141,22 @@ The skills don't change: they only call the `jsdd` CLI.
 - `JSDD_SESSION_ID` as the claim owner, set by whichever agent starts the session.
 - If Copilot can't show the board at session start, `jsdd init` adds a line to `.github/copilot-instructions.md` telling the agent to run `jsdd status` first.
 
+### 11. A dependency graph of specs and tasks
+
+*From Taskmaster's task dependencies.*
+
+**Gap:** dependencies are recorded but never drawn. Each spec's `depends_on` shows on the board as a list of IDs, and the order of tasks is implicit in `tasks.md`: a task waits for every task before it, except the other tasks in its own run of `[P]` tasks. To see what blocks what across several specs, or which tasks in a spec can run in parallel, you have to read the files.
+
+**Shape:** `jsdd graph [specs|tasks] [ID ...]`:
+
+- `specs` prints the spec graph from `depends_on`, ordered by level (how many specs must close before each one). Each spec shows its status and the dependencies it is still waiting on, and the graph flags missing IDs and cycles.
+- `tasks` prints each spec's tasks as steps, with each run of `[P]` tasks as one step. Each task shows its state (ticked, claimed, free, or waiting on earlier tasks).
+- With no argument, it prints both together: the spec graph with each spec's tasks nested under it.
+- `--mermaid` prints the same graph as a Mermaid flowchart, with one subgraph per spec, which can go into `STATUS.md` or a PR description.
+
 ## Larger: autonomous mode
 
-### 11. Autonomous mode
+### 12. Autonomous mode
 
 *From GSD's unattended runs and Taskmaster's task loop, held to this kit's checks.*
 
@@ -295,4 +308,4 @@ What it costs:
 
 Ideas 1 and 2 first. Living specs make the kit useful over the long term, and a light track gets it used for everyday work. Idea 3 is the cheapest real quality gain, since it reuses the subagent setup the kit already has.
 
-Autonomous mode (idea 11) builds on ideas 3 and 6, so they come first either way. After them, its M0 parts (provenance, parking, frozen checks) are worth building on their own: they make unattended single runs safe before any loop exists. M1 then decides the rest: how often single-spec runs park on a real project says whether the loop and auto-merge are worth their cost.
+Autonomous mode (idea 12) builds on ideas 3 and 6, so they come first either way. After them, its M0 parts (provenance, parking, frozen checks) are worth building on their own: they make unattended single runs safe before any loop exists. M1 then decides the rest: how often single-spec runs park on a real project says whether the loop and auto-merge are worth their cost.
