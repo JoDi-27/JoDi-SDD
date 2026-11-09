@@ -30,7 +30,7 @@ The spec has no plan yet. In an autonomous run nobody else reads it before it is
 2. **Acceptance criteria.** Every R has at least one AC, and each AC is observable and could be checked by a command. An AC only a person could check is blocking in an autonomous run.
 3. **Cases.** For each R: the error case, the empty case, and who may do it (permissions) are covered or ruled out under Scope. A missing case is blocking when a user would hit it.
 4. **Traceability.** As plan mode's 2a and 2b: every ID in `refs` exists in `docs/requirements.md` and is tagged on an R; the Capability changes table matches the entries in `docs/capabilities/`.
-5. **Open questions.** Any `[NEEDS CLARIFICATION` marker left is blocking. An answer recorded as an assumption (`auto: spec.clarify`) is fine, but flag one that contradicts the intent, the constitution, a DEC row, or a Must row.
+5. **Open questions.** Any `[NEEDS CLARIFICATION` marker left is blocking. An answer the `sdd-product` agent gave (`assumed, auto: product`) is fine, but flag one that contradicts the intent, the constitution, a DEC row, or a Must row, or whose class does not match its basis.
 6. **Size.** Flag a spec larger than a few days of work as blocking, and propose how to split it (each part with its Rs).
 7. **Scope.** Flag an R that goes beyond the rows in `refs` and the PLAN.md item, which belongs in `BACKLOG.md`.
 

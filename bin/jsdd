@@ -92,6 +92,8 @@ Usage: jsdd <command>
   run start|end|status --loop   Mark an autonomous loop (/jsdd:auto with no ID) for this session
   run next                      In a loop: start the run on the next spec in the queue, print its ID
   run active | stop-check       The specs this session runs; whether it may stop now
+  charter [get <key>]           The autonomous charter's effective values (preset, product class,
+                                scope, budgets, key gates), or one of them
   auto queue                    The specs an autonomous loop would take now, in order
   auto dry-run                  What a loop would take, where each spec may park, what it leaves out
   auto doctor                   Check what an unattended run needs: settings, git, gh, permission mode
@@ -1185,12 +1187,12 @@ autopilot   yes  yes'
 # gate, allowed policies, the policy in each mode of MODE_TABLE (in order), then
 # what it decides and which skills reach it. A new mode adds a column; a new gate a row.
 GATES='spec.split               ask|auto|park  ask  auto  ask   Split a spec larger than a few days into several (specify)
-spec.clarify             ask|auto|park  ask  park  ask   Answer a [NEEDS CLARIFICATION] question about behavior (specify)
+spec.clarify             ask|auto|park  ask  auto  ask   Answer a [NEEDS CLARIFICATION] question about behavior (specify; autonomous: sdd-product, up to the product class of the charter)
 depends.override         ask|park       ask  park  park  Go ahead while a spec in depends_on is not done (plan, spike)
 spec.approve             ask|auto|park  ask  auto  auto  Approve a spec for planning (plan)
 plan.approve             ask|auto|park  ask  auto  auto  Approve a plan or amendment for implementing (implement)
 implement.stuck          ask|auto|park  ask  auto  auto  Fix a failing check, a wrong plan, or a decision the plan lacks (implement)
-spec.change              ask|park       ask  park  park  Change behavior, scope, or ACs of an approved spec (implement, verify)
+spec.change              ask|auto|park  ask  park  park  Change behavior, scope, or ACs of an approved spec (implement, verify; autonomous auto: sdd-product decides)
 task.manual_check        ask|park       ask  park  park  Do a check: manual: on a task or acceptance criterion (implement, verify)
 commit                   ask|auto       ask  auto  auto  Commit each finished task (implement)
 verify.gaps              ask|auto|park  ask  auto  auto  Approve, change, or drop the fixes a verification proposes (verify, plan)
@@ -1209,19 +1211,24 @@ wall_time_hours    1  24  4  Hours a run (or an autonomous loop) may take before
 specs_per_run      1  20  3  Specs an autonomous loop takes before it stops'
 budget_row() { printf '%s\n' "$BUDGETS" | awk -v b="$1" '$1 == b'; }
 
-# Presets of the autonomous mode: preset, then the gates it changes from the
-# catalog's autonomous column (which is cautious: every product question parks).
-# A gate the project sets in its autonomous section wins over the preset.
-PRESETS='cautious   -
-standard   spec.clarify=auto
-hands-off  spec.clarify=auto merge=auto'
+# Presets of the autonomous mode: preset, then its product class (how far the
+# sdd-product agent's answers may be acted on) and the gates it changes from the
+# catalog's autonomous column. A key the project sets in its autonomous section
+# wins over the preset.
+PRESETS='cautious   product=cited
+standard   product=inferred
+hands-off  product=all spec.change=auto merge=auto'
+# Product classes, weakest basis last: an answer of a class above the charter's
+# product setting parks. park: every product question parks.
+PRODUCT_CLASSES='park cited inferred uncited all'
 preset_names() { printf '%s\n' "$PRESETS" | awk '{ printf "%s%s", (NR > 1 ? ", " : ""), $1 }'; }
 # preset_gate <preset> <gate>: the preset's policy for the gate, or nothing.
 preset_gate() { printf '%s\n' "$PRESETS" | awk -v p="$1" -v g="$2" '$1 == p { for (i = 2; i <= NF; i++) if (index($i, g "=") == 1) print substr($i, length(g) + 2) }'; }
 
 # The autonomous section also says what a loop may take (the charter's scope):
 # key, what its value is. Lists are inline, like [1, 2].
-SCOPE_KEYS='phases          PLAN.md phases a loop takes specs from (default: every phase)
+SCOPE_KEYS='product         How far the sdd-product agent may decide: park, cited, inferred, uncited, all
+phases          PLAN.md phases a loop takes specs from (default: every phase)
 types           Spec types a loop takes: feature, baseline, spike (default: [feature])
 exclude_groups  Requirement groups a loop never touches, like [FR-BILLING]'
 scope_row() { printf '%s\n' "$SCOPE_KEYS" | awk -v k="$1" '$1 == k'; }
@@ -1317,6 +1324,8 @@ config_errors() {
           elif [ "$k" = preset ]; then
             printf '%s\n' "$PRESETS" | awk -v p="$v" '$1 == p { ok = 1 } END { exit !ok }' \
               || echo "$f:$n: autonomous.preset: '$v' is not one of $(preset_names)"
+          elif [ "$k" = product ]; then
+            case " $PRODUCT_CLASSES " in *" $v "*) ;; *) echo "$f:$n: autonomous.product: '$v' is not one of $(printf '%s' "$PRODUCT_CLASSES" | sed 's/ /, /g')" ;; esac
           elif ! list_items "$v" >/dev/null; then echo "$f:$n: autonomous.$k must be a list, like [$(case $k in phases) echo 1 ;; types) echo feature ;; *) echo FR-BILLING ;; esac)]"
           else
             for m in $(list_items "$v"); do
@@ -1332,7 +1341,7 @@ config_errors() {
           if [ -z "$row" ] && [ -n "$(budget_row "$k")" ]; then
             budget_row "$k" | { read -r _ lo hi _; case $v in ""|*[!0-9]*) false ;; *) [ "$v" -ge "$lo" ] && [ "$v" -le "$hi" ] ;; esac; } \
               || echo "$f:$n: $s.$k: '$v' is not a whole number from $(budget_row "$k" | awk '{ print $2 " to " $3 }')"
-          elif [ -z "$row" ]; then echo "$f:$n: unknown gate '$k' in $s (gates and budgets: jsdd mode --explain$([ "$s" != autonomous ] || echo "; also preset, phases, types, exclude_groups"))"
+          elif [ -z "$row" ]; then echo "$f:$n: unknown gate '$k' in $s (gates and budgets: jsdd mode --explain$([ "$s" != autonomous ] || echo "; also preset, product, phases, types, exclude_groups"))"
           else
             allowed=$(printf '%s' "$row" | awk '{ print $2 }')
             case "|$allowed|" in *"|$v|"*) ;; *) echo "$f:$n: $s.$k: '$v' is not one of $(printf '%s' "$allowed" | sed 's/|/, /g')" ;; esac
@@ -1386,11 +1395,21 @@ autonomous_preset() { local p; p=$(config_get autonomous preset); echo "${p:-cau
 # mode_banner: the lines the board starts with when the mode is not plain manual.
 mode_banner() {
   if [ "$MODE" = autonomous ]; then
-    printf 'MODE: autonomous, preset %s (from %s). Gates pass or park without asking you; parked specs wait under "Waiting for you": jsdd mode --explain\n' "$(autonomous_preset)" "$MODE_SOURCE"
+    printf 'MODE: autonomous, preset %s, product %s (from %s). Gates pass or park without asking you; parked specs wait under "Waiting for you": jsdd charter\n' "$(autonomous_preset)" "$(scope_value product)" "$MODE_SOURCE"
   elif [ "$MODE" != manual ]; then
     printf 'MODE: %s (from %s). Some gates pass or park without asking you: jsdd mode --explain\n' "$MODE" "$MODE_SOURCE"
   fi
   [ -z "$MODE_WARN" ] || printf 'Mode warning: %s\n' "$MODE_WARN"
+  local n; n=$(assumed_count)
+  [ "$n" -eq 0 ] || printf 'Assumed decisions: %s made by autonomous runs wait for the owner to confirm or reject (docs/decisions.md, Assumed)\n' "$n"
+}
+
+# assumed_count: rows in the Assumed section of docs/decisions.md, which the
+# sdd-product agent's decisions go to until the owner confirms or rejects them.
+assumed_count() {
+  local f="$ROOT/docs/decisions.md"
+  [ -f "$f" ] || { echo 0; return; }
+  section "$f" Assumed | grep -cE '^\| *AS-[0-9]+' || true
 }
 
 cmd_mode() {
@@ -1458,7 +1477,42 @@ budget_value() {
 scope_value() {
   local v=""
   [ -n "$CONFIG_ERRORS" ] || v=$(config_get autonomous "$1")
-  if [ -n "$v" ]; then echo "$v"; else case $1 in phases) echo "[any]" ;; types) echo "[feature]" ;; *) echo "[]" ;; esac; fi
+  if [ -n "$v" ]; then echo "$v"
+  else case $1 in product) preset_gate "$(autonomous_preset)" product ;; phases) echo "[any]" ;; types) echo "[feature]" ;; *) echo "[]" ;; esac; fi
+}
+
+# charter_get <key>: one effective value of the charter: a scope key or preset,
+# a budget, or a gate's policy, in autonomous mode.
+charter_get() {
+  case $1 in
+    preset) autonomous_preset ;;
+    product|phases|types|exclude_groups) scope_value "$1" ;;
+    *)
+      if [ -n "$(budget_row "$1")" ]; then MODE=autonomous budget_value "$1"
+      elif [ -n "$(gate_row "$1")" ]; then gate_policy "$1" autonomous
+      else echo "unknown charter key '$1' (keys: jsdd charter)" >&2; return 1
+      fi ;;
+  esac
+}
+
+cmd_charter() {
+  local k g
+  resolve_mode
+  [ -z "$CONFIG_ERRORS" ] || { printf '%s\n' "$CONFIG_ERRORS" >&2; echo "the charter is invalid: jsdd mode --check" >&2; exit 1; }
+  case ${1:-} in
+    get) [ $# -eq 2 ] || { echo "usage: jsdd charter get <key>" >&2; exit 1; }; charter_get "$2" ;;
+    "")
+      if [ -z "$(printf '%s\n' "$CONFIG" | awk -F '\t' '$1 == "S" && $3 == "autonomous"')" ]; then
+        echo "no charter: $MODES_REL has no autonomous section, so no autonomous run can start (/jsdd:auto setup writes one)"
+        return
+      fi
+      mode_allowed autonomous || echo "note: $MODES_REL does not list autonomous under modes"
+      for k in preset product types phases exclude_groups; do printf '%-16s %s\n' "$k" "$(charter_get "$k")"; done
+      printf '%s\n' "$BUDGETS" | while read -r k _; do printf '%-16s %s\n' "$k" "$(charter_get "$k")"; done
+      for g in spec.clarify spec.change verify.gap_option merge; do printf '%-16s %s\n' "$g" "$(charter_get "$g")"; done
+      echo "(every gate: SDD_MODE=autonomous jsdd mode --explain)" ;;
+    *) echo "usage: jsdd charter [get <key>]" >&2; exit 1 ;;
+  esac
 }
 
 cmd_budget() {
@@ -1780,8 +1834,8 @@ would_park() {
   dir=$(spec_dir "$1")
   open=$(count '\[NEEDS CLARIFICATION' "$dir/spec.md")
   if [ "$open" -gt 0 ]; then
-    if [ "$(gate_policy spec.clarify autonomous)" = park ]; then echo "would park at spec.clarify: $open open questions (preset standard takes recorded defaults as assumptions)"
-    else echo "answers $open open questions with recorded defaults, as assumptions (auto: spec.clarify), or parks where there is none"; fi
+    if [ "$(gate_policy spec.clarify autonomous)" = park ] || [ "$(scope_value product)" = park ]; then echo "would park at spec.clarify: $open open questions"
+    else echo "sdd-product answers $open open questions as far as product: $(scope_value product) allows; the rest park at spec.clarify"; fi
   fi
   # shellcheck disable=SC2046  # tasks.md is an optional extra argument
   manual=$(uncomment "$dir/spec.md" $( [ -f "$dir/tasks.md" ] && echo "$dir/tasks.md" ) | grep -Eo '\*\*(T[0-9]+|AC-[0-9]+)\*\*.*check: manual' | grep -Eo '^\*\*(T[0-9]+|AC-[0-9]+)' | tr -d '*' | paste -sd ' ' - || true)
@@ -1802,7 +1856,7 @@ cmd_auto() {
       [ -z "$CONFIG_ERRORS" ] || { printf '%s\n' "$CONFIG_ERRORS"; echo "fix $MODES_REL first: jsdd mode --check" >&2; exit 1; }
       mode_allowed autonomous || echo "note: $MODES_REL does not list autonomous under modes yet, so no run can start"
       max=$(MODE=autonomous budget_value specs_per_run)
-      echo "autonomous, preset $(autonomous_preset): up to $max specs in $(MODE=autonomous budget_value wall_time_hours)h; types $(scope_value types), phases $(scope_value phases), excluding $(scope_value exclude_groups)"
+      echo "autonomous, preset $(autonomous_preset), product $(scope_value product): up to $max specs in $(MODE=autonomous budget_value wall_time_hours)h; types $(scope_value types), phases $(scope_value phases), excluding $(scope_value exclude_groups)"
       echo "merge: $( [ "$(gate_policy merge autonomous)" = auto ] && echo "a converged spec with green CI is merged" || echo "each spec ends at a pull request for you to merge")"
       echo
       rows=$(queue_rows)
@@ -1954,6 +2008,7 @@ cmd_pr() {
   out=$(section "$dir/tasks.md" Tasks | grep -E '^[[:space:]]*- \[[ xX]\]' || true)
   [ -z "$out" ] || printf '\n## Tasks\n\n%s\n' "$out"
   out=$(section "$dir/plan.md" Deviations); [ -z "$out" ] || printf '\n## Deviations from the plan\n\n%s\n' "$out"
+  out=$(section "$dir/run-report.md" 'Product decisions'); [ -z "$out" ] || printf '\n## Product decisions to review (weakest basis first)\n\n%s\n' "$out"
   out=$(section "$dir/run-report.md" 'Decisions made without a person'); [ -z "$out" ] || printf '\n## Decisions made without a person\n\n%s\n' "$out"
   [ ! -f "$dir/run-report.md" ] || printf '\nRun report: [%s/run-report.md](%s/run-report.md)\n' "$rel" "$rel"
   return 0
@@ -2253,6 +2308,7 @@ case "${1:-}" in
   park) shift; cmd_park "$@" ;;
   unpark) shift; cmd_unpark "$@" ;;
   run) shift; cmd_run "$@" ;;
+  charter) shift; cmd_charter "$@" ;;
   auto) shift; cmd_auto "$@" ;;
   freeze) shift; cmd_freeze "$@" ;;
   pr) shift; cmd_pr "$@" ;;

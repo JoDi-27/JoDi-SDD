@@ -5,10 +5,10 @@ One line per term, alphabetical. The full reference for statuses, IDs, and file 
 | Term | Meaning |
 | --- | --- |
 | Acceptance criterion (AC-1, AC-2, …) | A testable condition in a spec that proves a requirement is met. Verify checks every one. |
-| Agent | A subagent that runs in its own context: `sdd-reviewer` checks plans and verdicts, `spike-researcher` writes briefings, `sdd-surveyor` reads existing code. |
+| Agent | A subagent that runs in its own context: `sdd-reviewer` checks specs, plans, and verdicts, `spike-researcher` writes briefings, `sdd-surveyor` reads existing code, `sdd-product` decides product questions in autonomous runs. |
 | Amendment (A1, A2, …) | A section added to `plan.md` after verification found gaps, saying what each gap became. |
 | Approval | Running the next command. There is no separate approve action. |
-| Assumption (`auto: spec.clarify`) | An open question an autonomous run answered with a recorded default (from `BACKLOG.md`, a DEC row, or the spec's recommended answer), written as an assumption with its source. Run reports list every one. |
+| Assumed decision (AS-nn) | A product decision the `sdd-product` agent made in an autonomous run, in the Assumed section of `docs/decisions.md` with its class, basis, and reversal cost, until the owner confirms it (it becomes a DEC row) or rejects it. |
 | `auto:` decision | A decision a run made without a person, written as `auto: <gate>` with what passed it (`auto: plan.approve, sdd-reviewer`). Never recorded as a person's. |
 | Autopilot | A runtime mode: you write and approve a spec, and `/jsdd:auto <ID>` plans, implements, and verifies it and opens a pull request without asking you anything. What it cannot settle parks. |
 | Autonomous | A runtime mode: within a charter the team committed, `/jsdd:auto` works through the queue spec after spec, each to a pull request, with the reviewer approving specs and plans. What it cannot settle parks. |
@@ -17,7 +17,7 @@ One line per term, alphabetical. The full reference for statuses, IDs, and file 
 | Board | The progress view of every spec and what to do next. Printed by `/jsdd:status` and at session start; saved as `specs/STATUS.md`. |
 | Brownfield | A project with existing code brought under the kit. Init plans baselines instead of an MVP. |
 | Capability document (`docs/capabilities/<area>.md`) | How one area works now, merged from every spec that changed it when the spec closed. |
-| Charter | The `autonomous:` section of `specs/jsdd.yml`: the preset, the scope (types, phases, excluded requirement groups), and the budgets an autonomous run works within. A run can never edit it. |
+| Charter | The `autonomous:` section of `specs/jsdd.yml`: the preset, the product class, the scope (types, phases, excluded requirement groups), and the budgets an autonomous run works within. A run can never edit it. |
 | Check | The command on a task that proves it is done. `jsdd done` ticks the task only when the command exits 0. `check: manual: …` when no command can. |
 | Claim | A lock a session takes on a spec or task before working on it, so parallel sessions don't collide. Lives in `.git/sdd-claims`, never committed. With remote claims, it is a ref under `refs/sdd-claims/` on the git remote instead. |
 | Commit message format | `[003] T3 …` for a task, `[003] …` for a spec, `[meta] …` for housekeeping. The commit hook rejects anything else. |
@@ -41,13 +41,15 @@ One line per term, alphabetical. The full reference for statuses, IDs, and file 
 | Parked | A spec waiting at a gate only a person can pass, with the reason in its `parked:` frontmatter. It keeps its status, shows under "Waiting for you", and `jsdd next` skips it until `jsdd unpark`. |
 | Phase | A numbered stage in `PLAN.md`. Phase 0 is spikes and foundations, Phase 1 the first version or next milestone. |
 | plan.md | How a spec will be built: design, decisions, constitution check, test strategy, deviations. No new requirements. |
-| Preset | One line that sets the autonomous gates: `cautious` parks every product question, `standard` answers them with recorded defaults, `hands-off` also merges converged work once CI is green. |
+| Preset | One line that sets the autonomous gates: `cautious` lets `sdd-product` decide only what the docs already answer, `standard` also what follows from the principles, `hands-off` everything outside the protected files, including spec changes, and merges converged work once CI is green. |
 | Priority | On a requirement row: M Must, S Should, C Could, W Won't. |
+| Product agent (`sdd-product`) | The read-only agent that decides product questions in an autonomous run, from the product documents and code only, and classifies each answer as cited, inferred, uncited, or conflict. The charter's `product` setting caps which classes a run acts on. |
+| Product class | What supports a product answer: `cited` (the docs say it), `inferred` (it follows from the principles), `uncited` (nothing covers it; a rule decides), `conflict` (the docs disagree). |
 | Remote claims | Opt-in mode (`git config jsdd.claims remote`) where claims are refs on the git remote, so people on separate clones see each other's claims. The remote accepts each claim only once. |
 | Requirement (FR-AUTH-02) | A row in `docs/requirements.md` with an ID, a priority, and a source. `FR` functional, `NFR` non-functional. |
 | Requirement (R1, R2, …) | A numbered behaviour inside a spec, in EARS form, tagged with the rows it refines. |
 | Roadmap (`PLAN.md`) | Phases of work, each item tagged with the requirements it delivers. Not a spec's `plan.md`. |
-| Run report (`run-report.md`) | What a run (autopilot or autonomous) did, each decision and assumption it made without a person, and what parked. The pull request links it. |
+| Run report (`run-report.md`) | What a run (autopilot or autonomous) did, each decision and product decision it made without a person, and what parked. The pull request links it. |
 | Runtime mode | What happens at every gate. `manual`, where every gate asks, is the default; `autopilot` runs an authored spec to a pull request; `autonomous` works through the queue within a charter. Chosen with `SDD_MODE` among the modes `specs/jsdd.yml` allows. |
 | Session | One Claude Code conversation. Several can work on one project at once. |
 | Skill | A `/jsdd:` command. There are nine. |

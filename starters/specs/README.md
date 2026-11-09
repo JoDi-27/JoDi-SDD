@@ -152,7 +152,7 @@ Every point where a skill waits for a person is a named **gate**: approving a sp
 The kit runs in `manual` mode, where every gate asks, exactly as described in this file. The other modes:
 
 - **`autopilot`**: you write and approve the spec; `/jsdd:auto <ID>` does the rest, up to a pull request, without asking you anything. See [Autopilot](#autopilot) below.
-- **`autonomous`**: the team commits a charter that says what runs may do on their own; `/jsdd:auto` then works through the queue, spec after spec, each to a pull request, and can settle open questions with recorded defaults and merge converged work when the charter allows it. See [Autonomous](#autonomous) below.
+- **`autonomous`**: the team commits a charter that says what runs may do on their own; `/jsdd:auto` then works through the queue, spec after spec, each to a pull request, and has the `sdd-product` agent decide product questions, and merge converged work, as far as the charter allows. See [Autonomous](#autonomous) below.
 
 Two settings choose the mode:
 
@@ -199,6 +199,7 @@ version: 1
 modes: [manual, autonomous]
 autonomous:
   preset: cautious            # cautious | standard | hands-off
+  product: cited              # optional, overrides the preset: park | cited | inferred | uncited | all
   types: [feature]            # what a loop takes: feature, baseline, spike
   phases: [1]                 # PLAN.md phases; leave out for every phase
   exclude_groups: [FR-BILLING]  # requirement groups a run never touches
@@ -207,19 +208,30 @@ autonomous:
   verify.gap_option: park     # any gate can still be set, and wins over the preset
 ```
 
-| Preset | Open questions (`spec.clarify`) | Merge (`merge`) |
-| --- | --- | --- |
-| `cautious` (also when none is set) | park | a pull request for you to merge |
-| `standard` | answered with a recorded default, written as an assumption; park when there is none | a pull request for you to merge |
-| `hands-off` | as standard | merged once the spec converged and every CI check passed |
+Product questions (an open marker, gap options that differ in what a user would notice, a spec change from verification, which part of a split comes first) go to the **`sdd-product`** agent. It reads only the product documents and the code, never the session that asked, answers each one, and classifies the answer by what supports it:
 
-In every preset, spec changes, manual checks, owner questions in spikes, a dependency that is not done, and a gap that survives two rounds park. A recorded default is a suggested default in `BACKLOG.md`, a DEC row, or a recommended answer written in the spec, never one the run makes up; it is recorded as `(assumption, auto: spec.clarify, from <source>)`, and the run reports list every one.
+| Class | The answer |
+| --- | --- |
+| `cited` | is already in the docs: a DEC row, a requirement, a suggested default in `BACKLOG.md`, the intent |
+| `inferred` | follows from the stated principles, and the agent shows the step |
+| `uncited` | has nothing in the docs to go on, so the agent picks the most reversible, smallest, closest, or most consistent option, and names the rule |
+| `conflict` | is one where the docs contradict each other, so it picks the newer or more specific source and flags the conflict |
+
+The charter's `product` setting caps how far a run may act: `park`, `cited`, `inferred`, `uncited`, or `all`. An answer beyond it parks, with the agent's answer in the reason. An answer that would change the constitution, the intent, or a Must row's priority parks under every preset. Each decision acted on is written as `(assumed, auto: product, sdd-product, <class> (<basis>))`, gets an `AS-nn` row in the Assumed section of `docs/decisions.md`, and is listed in the run report weakest basis first, with what it would cost to undo. Confirm a row and it becomes a DEC row; later runs then cite it. Reject it and it is removed, with a BACKLOG item or a spec to undo it.
+
+| Preset | `product` | Spec changes from verify (`spec.change`) | Merge (`merge`) |
+| --- | --- | --- | --- |
+| `cautious` (also when none is set) | `cited` | park | a pull request for you to merge |
+| `standard` | `inferred` | park | a pull request for you to merge |
+| `hands-off` | `all` | `sdd-product` decides | merged once the spec converged and every CI check passed |
+
+In every preset, manual checks, owner questions in spikes, a dependency that is not done, and a gap that survives two rounds park. `jsdd charter` prints the effective values.
 
 The three steps:
 
 1. **`/jsdd:auto setup`** writes the charter, and `jsdd mode --check` validates it. Each person who runs it sets `SDD_MODE=autonomous`.
 2. **`/jsdd:auto --dry-run`** (`jsdd auto dry-run`) shows what a loop would take, in order, where each spec would park ("would park at spec.clarify: 2 open questions"), and why each other spec is left out. `/jsdd:auto doctor` (`jsdd auto doctor`) checks the charter, the mode, a clean work tree, `gh`, and the permission mode, with the exact fix for each.
-3. **`/jsdd:auto <ID>`** runs one spec, as autopilot does but with nobody's approval: the `sdd-reviewer` approves the spec in its spec mode (testable requirements, an AC for each, the error, empty, and permission cases, size) before planning. **`/jsdd:auto`** with no ID runs the loop: `jsdd run start --loop`, then `jsdd run next` for each spec (each on its own branch `autonomous/<ID>-<slug>`, each with its run report and pull request), until the queue is empty, `specs_per_run` is reached, or the time is spent. The loop writes `specs/runs/<date>-<n>.md`: each spec's outcome, what waits for you, every assumption, and a short digest to read in the morning.
+3. **`/jsdd:auto <ID>`** runs one spec, as autopilot does but with nobody's approval: the `sdd-reviewer` approves the spec in its spec mode (testable requirements, an AC for each, the error, empty, and permission cases, size) before planning. **`/jsdd:auto`** with no ID runs the loop: `jsdd run start --loop`, then `jsdd run next` for each spec (each on its own branch `autonomous/<ID>-<slug>`, each with its run report and pull request), until the queue is empty, `specs_per_run` is reached, or the time is spent. The loop writes `specs/runs/<date>-<n>.md`: each spec's outcome, what waits for you, every product decision, and a short digest to read in the morning.
 
 The queue (`jsdd auto queue`) is what `jsdd next` offers, narrowed to the charter's scope, minus blocked and parked specs, a spec change waiting from verify, and specs another session holds. Spikes run only on what the researcher can answer from the docs and code; a question for the owner parks them. Baselines run only once a person created them for an area: the reviewer confirms each row, a Must row goes in as Should for the owner to confirm, and a bug goes to Findings and `BACKLOG.md`, never into a row.
 
@@ -238,7 +250,7 @@ Claude Code hooks keep the kit honest: they print the board and the claims at se
 | `tasks.md` | yes | no | no | Ordered, small, checkable tasks, plus verification evidence |
 | `prototype/` | no | yes | no | Throwaway code for a spike, never shipped |
 | `checks.lock` | autopilot, autonomous | no | no | Each task's check, frozen when the plan was approved (`jsdd freeze`) |
-| `run-report.md` | autopilot, autonomous | autonomous | autonomous | What a run did, every decision and assumption it made without a person, and what parked |
+| `run-report.md` | autopilot, autonomous | autonomous | autonomous | What a run did, every decision and product decision it made without a person, and what parked |
 
 Templates are in the plugin's `templates/` folder. Frontmatter in `spec.md` is what the tooling reads:
 
@@ -292,6 +304,7 @@ jsdd freeze 003                      # record each task's check in checks.lock; 
 jsdd pr 003                          # a pull request body from the spec, evidence, deviations, and run report
 jsdd auto dry-run                    # what an autonomous loop would take, and where each spec would park
 jsdd auto doctor                     # what an unattended run still needs, with the fix for each
+jsdd charter                         # the charter's effective values: preset, product class, scope, budgets
 ```
 
 Progress is computed from the files: checkboxes in `tasks.md` (for a spike, the goal questions, questions for you, and deliverables in `spec.md`; for a baseline, its acceptance criteria), and the open questions count from the `[NEEDS CLARIFICATION: …]` markers in `spec.md` and `plan.md`. HTML comments are ignored, so template guidance never counts.

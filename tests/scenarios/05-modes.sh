@@ -46,7 +46,7 @@ expect "mode: autonomous (SDD_MODE)" preview mode
 [ "$(preview gate plan.approve)" = auto ] || fail "the catalog policy was not used"
 [ "$(preview gate task.manual_check)" = park ] || fail "a manual check does not park"
 expect "[set in specs/jsdd.yml]" preview mode --explain
-expect "MODE: autonomous, preset cautious (from SDD_MODE)" preview status
+expect "MODE: autonomous, preset cautious, product cited (from SDD_MODE)" preview status
 preview status --write >/dev/null
 has "$(cat specs/STATUS.md)" "MODE" && fail "the per-person mode was written to specs/STATUS.md"
 

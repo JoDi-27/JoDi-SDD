@@ -30,13 +30,14 @@ autopilot:
   preset: standard
 autonomous:
   preset: reckless
+  product: everything
   phases: [one]
   types: [feature, chore]
   exclude_groups: billing
   specs_per_run: 50
 YML
 out=$(jsdd mode --check 2>&1) && fail "--check passed a bad charter"
-for want in "preset belongs in the autonomous section only" "'reckless' is not one of cautious, standard, hands-off" \
+for want in "preset belongs in the autonomous section only" "'reckless' is not one of cautious, standard, hands-off" "'everything' is not one of park, cited, inferred, uncited, all" \
   "'one' is not a phase number" "'chore' is not one of feature, baseline, spike" "exclude_groups must be a list" \
   "specs_per_run: '50' is not a whole number from 1 to 20"; do
   has "$out" "$want" || fail "--check did not report: $want. Got:
@@ -57,17 +58,27 @@ YML
 jsdd mode --check >/dev/null || fail "--check refused a valid charter"
 expect "mode: autonomous (SDD_MODE)" auto mode
 expect "preset: cautious (none set: the strictest)" auto mode --explain
-expect "MODE: autonomous, preset cautious" auto status
-for g in spec.clarify spec.change task.manual_check spike.question merge depends.override; do [ "$(auto gate $g)" = park ] || fail "$g does not park in cautious"; done
-for g in spec.approve plan.approve verify.gaps baseline.rows pr.open; do [ "$(auto gate $g)" = auto ] || fail "$g does not pass on its own"; done
+expect "MODE: autonomous, preset cautious, product cited" auto status
+[ "$(jsdd charter get product)" = cited ] || fail "cautious is not product: cited"
+for g in spec.change task.manual_check spike.question merge depends.override; do [ "$(auto gate $g)" = park ] || fail "$g does not park in cautious"; done
+for g in spec.clarify spec.approve plan.approve verify.gaps baseline.rows pr.open; do [ "$(auto gate $g)" = auto ] || fail "$g does not pass on its own"; done
+out=$(jsdd charter)
+for want in "preset           cautious" "product          cited" "specs_per_run    2" "merge            park"; do
+  has "$out" "$want" || fail "jsdd charter lacks: $want. Got:
+$out"
+done
+refuses jsdd charter get no.such.key
 [ "$(auto budget specs_per_run)" = 2 ] || fail "the charter's specs_per_run was not used"
 
 step "presets change gates; a gate the project sets wins over the preset"
 printf '  preset: hands-off\n' >>specs/jsdd.yml
 jsdd mode --check >/dev/null || fail "--check refused the preset: $(jsdd mode --check 2>&1)"
-[ "$(auto gate spec.clarify)" = auto ] || fail "hands-off does not answer clarifications"
+[ "$(jsdd charter get product)" = all ] || fail "hands-off is not product: all"
 [ "$(auto gate merge)" = auto ] || fail "hands-off does not merge"
-[ "$(auto gate spec.change)" = park ] || fail "hands-off changes specs"
+[ "$(auto gate spec.change)" = auto ] || fail "hands-off does not hand spec changes to sdd-product"
+printf '  product: inferred\n' >>specs/jsdd.yml
+[ "$(jsdd charter get product)" = inferred ] || fail "the charter's product did not win over the preset"
+edit specs/jsdd.yml '/product: inferred/d'
 expect "[preset hands-off]" auto mode --explain
 printf '  merge: park\n' >>specs/jsdd.yml
 [ "$(auto gate merge)" = park ] || fail "the project's merge: park did not win over the preset"
@@ -80,7 +91,7 @@ q=$(auto auto queue | cut -f1 | paste -sd ' ' -)
 [ "$q" = "001 005 006 007" ] || fail "the queue is '$q', not '001 005 006 007'"
 out=$(auto auto dry-run)
 for want in "002  refs FR-BILL-01, in autonomous.exclude_groups" "003  phase 2 is not in autonomous.phases" "004  waiting on 001" \
-  "would park at spec.clarify: 1 open questions" "would park at task.manual_check: AC-9" "parks at spike.question" \
+  "sdd-product answers 1 open questions as far as product: cited allows" "would park at task.manual_check: AC-9" "parks at spike.question" \
   "each spec ends at a pull request" "(after specs_per_run: next loop)"; do
   has "$out" "$want" || fail "the dry run lacks: $want. Got:
 $out"
@@ -143,3 +154,7 @@ expect "the work tree has uncommitted changes" auto auto doctor
 rm wip.txt
 expect "the work tree is clean" auto auto doctor
 expect "permission mode:" auto auto doctor
+
+step "assumed decisions: the board counts them until the owner confirms or rejects them"
+printf '\n## Assumed\n\n| ID | Decision | Choice | Class | Basis | Reversal | Spec | Date |\n|---|---|---|---|---|---|---|---|\n| AS-01 | Export format | CSV | inferred | intent.md § Principles | cheap | 006 | 2026-11-09 |\n' >>docs/decisions.md
+expect "Assumed decisions: 1 made by autonomous runs" jsdd status

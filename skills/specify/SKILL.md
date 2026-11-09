@@ -14,11 +14,12 @@ You write the WHAT and WHY of one slice of work. You do not plan or implement.
 
 ## Autonomous rules
 
-In `autonomous` mode (see `/jsdd:auto`), a run follows this skill only for step 4, on a spec that already exists: a run never creates specs or reworks one for a verification. Nobody is asked anything.
+In `autonomous` mode (see `/jsdd:auto`), a run follows this skill only on a spec that already exists: step 4 for its open markers, and step 3a for a spec change a verification approved as `auto: spec.change`. A run never creates specs. Nobody is asked anything.
 
-- **Clarifications** (gate `spec.clarify`, parks unless the preset is `standard` or `hands-off`, or the project sets `auto`): for each marker, look for a recorded default, in this order: a suggested default for it in `BACKLOG.md`, a DEC row in `docs/decisions.md` that settles it, then a recommended answer written in the marker or in Open questions. Settle a factual question (what a library does, what the code does today) with the `spike-researcher` agent instead; that is a fact, not an assumption. With a default, write it into the spec where it belongs, and record it under Open questions as `Q: … A: … (assumption, auto: spec.clarify, from <source>, <date>)`. A marker with no recorded default, or whose answer would change a Must row in `docs/requirements.md`, stays: park at `spec.clarify` naming it. Never invent an answer: a default you would have to make up is not recorded.
-- **Splits** (gate `spec.split`): a run never splits a spec itself; `/jsdd:plan`'s autonomous rule parks one the reviewer finds too large.
-- **Finish** commits the spec as `[<ID>] Clarify (auto: spec.clarify)`, with one changelog line per answer, and returns to `/jsdd:auto`; there is no report to a person.
+- **Clarifications** (gate `spec.clarify`): settle a factual question (what a library does, what the code does today) with the `spike-researcher` agent: that is a fact, recorded with its source. Send every product question, all at once, to the `sdd-product` agent, and act on its answers as `/jsdd:auto`'s "Product decisions" rule says: write each one into the spec where it belongs, and record it under Open questions as `Q: … A: … (assumed, auto: product, sdd-product, <class> (<basis>), <date>)`, with its `AS-nn` row in `docs/decisions.md`. A marker whose answer is beyond the charter's product class, or protected, stays in place: park at `spec.clarify`, naming it with the agent's answer and class.
+- **Spec changes from verify** (step 3a, gate `spec.change`): `verify-report.md` records each kept spec-change gap with `sdd-product`'s answer. Rework the R or AC to that answer, following step 3, and log it per gap as step 3a says, ending with "(auto: spec.change, AS-nn)". A new question the rework raises goes to `sdd-product` as above.
+- **Splits** (gate `spec.split`): a run never splits a spec from here; `/jsdd:plan`'s autonomous rule does.
+- **Finish** commits the spec as `[<ID>] Clarify (auto)` (or `[<ID>] Spec change (auto)`), with one changelog line per answer, and returns to `/jsdd:auto`; there is no report to a person.
 
 ## 1. Load context
 

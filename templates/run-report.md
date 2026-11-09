@@ -2,7 +2,7 @@
 
 <!--
 Written by /jsdd:auto (autopilot or autonomous), one per run (a later run on the same spec adds a "## Run 2" section with the same parts).
-Everything here was done without a person. Read "Decisions made without a person" and "Parked" first.
+Everything here was done without a person. Read "Product decisions", "Decisions made without a person", and "Parked" first.
 -->
 
 **Mode:** autopilot | autonomous, preset <preset>, loop <specs/runs/…> · **Started by:** <person, by running /jsdd:auto> · **Branch:** <branch>
@@ -23,9 +23,13 @@ One line each: what was decided, the gate, and what passed it. For example:
 - G2 option (a), fix the code: the reviewer's recommendation (auto: verify.gap_option)
 -->
 
-## Assumptions
+## Product decisions
 
-<!-- Autonomous mode: each open question answered with a default (auto: spec.clarify), the answer, and where it came from (BACKLOG.md, the recommended answer in the spec). Or "None." -->
+<!--
+Autonomous mode: every sdd-product answer the run acted on, weakest basis first (conflict, uncited, inferred, cited). Or "None."
+| AS | Question | Answer | Class | Basis | Reversal |
+| --- | --- | --- | --- | --- | --- |
+-->
 
 ## Parked
 

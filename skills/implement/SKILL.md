@@ -20,7 +20,8 @@ In `autopilot` and `autonomous` mode (see `/jsdd:auto`), these rules pass this s
   - The plan is wrong: add a Deviation row starting `auto: implement.stuck:` with what changed and why, and change the design or tasks. A changed or new check needs the `sdd-reviewer` in `plan` mode, told which tasks changed and why, to raise no blocking finding; then `jsdd freeze <ID> --accept <Tn>` for a changed check, or `jsdd freeze <ID>` for a new task. Otherwise park.
   - A decision the plan lacks: decide it only when nothing in the spec, the constitution, or `docs/decisions.md` bears on it and a user of the product would not notice the difference (a name, an internal structure); record it as a Deviation starting `auto: implement.stuck:`. Anything else parks.
   - Something only a person can do (credentials, an account, a paid service, a device): park.
-- **Manual checks** (gate `task.manual_check`) and **spec changes** (gate `spec.change`): park.
+- **Manual checks** (gate `task.manual_check`): park.
+- **Spec changes** (gate `spec.change`): park, unless the gate is `auto` (autonomous mode, preset `hands-off`). Then release the task and send the question to the `sdd-product` agent as `/jsdd:verify`'s spec-change rule does; when it decides the spec changes, record it in the spec's changelog as `(auto: spec.change, sdd-product, <class>, AS-nn)`, set `status: draft`, and return to `/jsdd:auto`, which runs `/jsdd:specify` step 3a and `/jsdd:plan` in amend mode. An answer beyond the product class parks.
 - **Commits** (gate `commit`): after each `jsdd done`, commit only that task's files with a message starting `[<ID>] T<n>`.
 
 ## 1. Gate
