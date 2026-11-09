@@ -90,6 +90,8 @@ Optional domain checklists (security, accessibility, data retention) can add mor
 
 *From GSD's unattended runs and Taskmaster's task loop, held to this kit's checks.*
 
+**Foundation built:** runtime modes and gates (see `jsdd mode` in [CHANGELOG.md](CHANGELOG.md), Unreleased). Each gate in the table below has a name in `jsdd`'s gate catalog, and `autonomous` is registered as a mode that needs consent but is not available yet. The charter described below becomes the `autonomous:` section of `specs/jsdd.yml`, and `SDD_MODE=autonomous` (or `/jsdd:auto`) is the person's consent.
+
 **Gap:** the kit is built around a person approving each step. Running the next command is the approval, and three skills say outright that an agent must never record a decision the user did not give. So a run nobody is watching stops at the first gate: `/jsdd:verify` leaves its report `pending`, `/jsdd:plan` changes nothing, and `/jsdd:implement` stops at the first check it cannot fix. There is no way to say "work through Phase 1 overnight" and come back to verified work.
 
 **Shape:** an opt-in mode in which the human approves once, up front, by committing a **charter** (`specs/autonomy.yml`), and once at the end, by reading a **run report**. Every gate in between is passed by a machine check, a fresh-context reviewer, or a rule in the charter. A gate that none of those can pass is **parked**: the spec waits, visible on the board, and the run moves on to other work. Autonomy never means pretending a person decided. Each decision is recorded with the charter key or agent that made it (`auto: charter decisions.gap_options`, `auto: reviewer`), so the history stays honest and anyone can audit it afterwards.

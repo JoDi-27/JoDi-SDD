@@ -10,6 +10,8 @@ Input: $ARGUMENTS
 
 You write the WHAT and WHY of one slice of work. You do not plan or implement.
 
+**Runtime mode.** Run `jsdd mode` first. The decision points below are marked with their gate, like (gate `spec.approve`). In `manual` mode every gate is `ask`: a person decides, as the step says. If the mode is anything else, stop and tell the user that this skill runs only in manual mode for now.
+
 ## 1. Load context
 
 - Read `specs/README.md` (the workflow) and `specs/constitution.md`.
@@ -24,7 +26,7 @@ You write the WHAT and WHY of one slice of work. You do not plan or implement.
 - If the input is a spec ID (for example `003`), claim it (`jsdd claim 003`), open `specs/003-*/spec.md`, and go to step 4. If another session holds it, stop and report who. If the spec is `draft` and its folder has a `verify-report.md` whose Decision is `approved`, go to step 3a first.
 - Otherwise pick the type: `spike` if the work answers questions or settles decisions (all PLAN.md Phase 0 spikes), `feature` if it delivers working behavior.
 - Spikes are created and run as an interview by `/jsdd:spike`, not by this skill. For a spike (new, or an existing spike ID), stop here and follow the `/jsdd:spike` skill instead. The same goes for a baseline (`type: baseline`): follow `/jsdd:baseline`.
-- If the work is clearly larger than a few days, propose a split into several specs and confirm it with the user before creating them.
+- If the work is clearly larger than a few days, propose a split into several specs and confirm it with the user before creating them (gate `spec.split`).
 - Create it: `jsdd new feature "<title>"`, then claim the new ID with `jsdd claim <ID>`. Keep titles short and use the PLAN.md wording when the work comes from there.
 
 ## 3. Write the spec
@@ -50,7 +52,7 @@ A verification found gaps and the user chose to change the spec for some of them
 
 ## 4. Clarify
 
-- Collect the open markers. Ask the user the most important ones (up to five, those that change scope or behavior most) in a single AskUserQuestion call, with a recommended answer first where you have one.
+- Collect the open markers. Ask the user the most important ones (up to five, those that change scope or behavior most) in a single AskUserQuestion call, with a recommended answer first where you have one (gate `spec.clarify`).
 - Write each answer into the spec where it belongs, and record it under Open questions as `Q: … A: … (date)`. Leave unanswered markers in place.
 - Add a changelog line for what changed.
 

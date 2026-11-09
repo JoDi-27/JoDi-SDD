@@ -26,6 +26,7 @@ One line per term, alphabetical. The full reference for statuses, IDs, and file 
 | Feature | A spec for building something. Goes through specify, plan, implement, verify. |
 | Fresh context | A subagent that never saw the session that wrote the work, so it judges only what is on disk. |
 | Gap (G1, G2, …) | Something verification found that the code or spec doesn't satisfy, with a proposed fix, in `verify-report.md`. |
+| Gate | A named point where a skill waits for a person, like `spec.approve` or `verify.gaps`. The runtime mode says whether it asks, passes on its own, or parks. |
 | Hook | A script Claude Code runs on its own: prints the board, regenerates `STATUS.md`, blocks commits without a spec ID, warns about held claims. Loads at session start. |
 | Intent (`docs/intent.md`) | What you are building, for whom, and why. |
 | jsdd | The bash script behind every command. `jsdd help` lists its subcommands. |
@@ -36,6 +37,7 @@ One line per term, alphabetical. The full reference for statuses, IDs, and file 
 | Requirement (FR-AUTH-02) | A row in `docs/requirements.md` with an ID, a priority, and a source. `FR` functional, `NFR` non-functional. |
 | Requirement (R1, R2, …) | A numbered behaviour inside a spec, in EARS form, tagged with the rows it refines. |
 | Roadmap (`PLAN.md`) | Phases of work, each item tagged with the requirements it delivers. Not a spec's `plan.md`. |
+| Runtime mode | What happens at every gate. `manual`, where every gate asks, is the default and the only mode available today. Chosen with `SDD_MODE` among the modes `specs/jsdd.yml` allows. |
 | Session | One Claude Code conversation. Several can work on one project at once. |
 | Skill | A `/jsdd:` command. There are eight. |
 | Spec | One folder under `specs/` describing one slice of work: feature, spike, or baseline. |

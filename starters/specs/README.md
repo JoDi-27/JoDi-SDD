@@ -127,6 +127,25 @@ A claim is a directory created with `mkdir`, which is atomic, under `.git/sdd-cl
 
 A session that ends without releasing leaves its claim behind. Claims older than 8 hours (`SDD_STALE_HOURS`) are shown as stale; free one with `jsdd release <ID> [Tn] --force` once you know that session is gone. Claims only coordinate sessions on one machine.
 
+## Runtime modes
+
+Every point where a skill waits for a person is a named **gate**: approving a spec (`spec.approve`), answering a clarifying question (`spec.clarify`), approving the fixes a verification proposes (`verify.gaps`), and so on. The skills mark each one, like (gate `plan.approve`). A **runtime mode** says what happens at every gate: `ask` (a person decides), `auto` (a check, a reviewer, or a rule passes it), or `park` (the work waits on the board, and nothing is guessed). `jsdd mode --explain` lists every gate and its policy.
+
+The kit runs in `manual` mode, where every gate asks, exactly as described in this file. It is the only mode available today; `autonomous` is reserved, and `jsdd` refuses it with a warning until it is built. Two settings choose the mode:
+
+- `specs/jsdd.yml`, committed, says which modes this project allows and can tune their gates. With no file, only `manual` is allowed.
+- `SDD_MODE`, set by each person (in the shell, or under `env` in `.claude/settings.local.json`), picks the mode for their sessions. A mode that needs consent, such as `autonomous`, can only be picked this way, never as the file's `default`.
+
+```yaml
+version: 1
+modes: [manual, autonomous]   # manual is always allowed
+default: manual
+autonomous:                   # gates to change from the mode's own policies
+  verify.gap_option: park
+```
+
+It fails closed. `jsdd mode --check` lists every unknown key, gate, or value, and exits 1. While the file is invalid, or `SDD_MODE` names a mode that is unknown, not allowed, or not available, every gate asks, and the board starts with a `Mode warning:` line. Any mode other than `manual` is printed at the top of the board, so a session never runs in one without saying so. The mode is never written to `specs/STATUS.md`, because it belongs to the person, not the project.
+
 ## Automation
 
 Claude Code hooks keep the kit honest: they print the board and the claims at session start, regenerate `specs/STATUS.md` when a spec, task list, `PLAN.md`, or `docs/requirements.md` changes, block commit messages without a spec ID or `[meta]`, and warn at the end of a session that still holds claims. The hooks, skills, agents, and the `jsdd` script live in the plugin, not in this repository; the hooks do nothing in a project without `specs/constitution.md`.
@@ -181,6 +200,8 @@ jsdd claims --prune                  # list claims, dropping the ones no longer 
 jsdd coverage FR-AUTH                # requirements in a group, with the specs covering each
 jsdd coverage --phase 1 --priority M --missing   # Phase 1 Musts with no spec yet
 jsdd capabilities FR-AUTH            # rows with a capability entry, and live specs about to change them
+jsdd mode --explain                  # the runtime mode, and what happens at each gate
+jsdd gate plan.approve               # one gate's policy in the current mode: ask, auto, or park
 ```
 
 Progress is computed from the files: checkboxes in `tasks.md` (for a spike, the goal questions, questions for you, and deliverables in `spec.md`; for a baseline, its acceptance criteria), and the open questions count from the `[NEEDS CLARIFICATION: …]` markers in `spec.md` and `plan.md`. HTML comments are ignored, so template guidance never counts.
