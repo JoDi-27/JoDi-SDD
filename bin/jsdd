@@ -1507,9 +1507,9 @@ cmd_charter() {
         return
       fi
       mode_allowed autonomous || echo "note: $MODES_REL does not list autonomous under modes"
-      for k in preset product types phases exclude_groups; do printf '%-16s %s\n' "$k" "$(charter_get "$k")"; done
-      printf '%s\n' "$BUDGETS" | while read -r k _; do printf '%-16s %s\n' "$k" "$(charter_get "$k")"; done
-      for g in spec.clarify spec.change verify.gap_option merge; do printf '%-16s %s\n' "$g" "$(charter_get "$g")"; done
+      for k in preset product types phases exclude_groups; do printf '%-18s %s\n' "$k" "$(charter_get "$k")"; done
+      printf '%s\n' "$BUDGETS" | while read -r k _; do printf '%-18s %s\n' "$k" "$(charter_get "$k")"; done
+      for g in spec.clarify spec.change verify.gap_option merge; do printf '%-18s %s\n' "$g" "$(charter_get "$g")"; done
       echo "(every gate: SDD_MODE=autonomous jsdd mode --explain)" ;;
     *) echo "usage: jsdd charter [get <key>]" >&2; exit 1 ;;
   esac

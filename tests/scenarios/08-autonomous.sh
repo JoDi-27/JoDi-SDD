@@ -63,7 +63,7 @@ expect "MODE: autonomous, preset cautious, product cited" auto status
 for g in spec.change task.manual_check spike.question merge depends.override; do [ "$(auto gate $g)" = park ] || fail "$g does not park in cautious"; done
 for g in spec.clarify spec.approve plan.approve verify.gaps baseline.rows pr.open; do [ "$(auto gate $g)" = auto ] || fail "$g does not pass on its own"; done
 out=$(jsdd charter)
-for want in "preset           cautious" "product          cited" "specs_per_run    2" "merge            park"; do
+for want in "preset             cautious" "product            cited" "specs_per_run      2" "merge              park"; do
   has "$out" "$want" || fail "jsdd charter lacks: $want. Got:
 $out"
 done
