@@ -62,10 +62,18 @@ Usage: jsdd <command>
                                 specs whose Capability changes are not merged. --check exits 1
                                 when there is a problem
 
+  mode [--check | --explain]    The runtime mode and where it came from; --check
+                                validates specs/jsdd.yml (exit 1 on any problem);
+                                --explain lists every gate and its policy
+  gate <gate>                   Print a gate's policy in the current mode: ask, auto, or park
+
 Claims stop parallel sessions from picking the same work. They live in the git
 common dir, so every worktree on this machine shares them, and are never committed.
 The owner is \$CLAUDE_CODE_SESSION_ID, or user@host outside Claude Code.
 Claims older than \$SDD_STALE_HOURS (default 8) are shown as stale.
+
+The runtime mode is manual unless \$SDD_MODE picks another mode that specs/jsdd.yml
+allows. Anything invalid falls back to manual, where every gate asks.
 EOF
 }
 
@@ -847,8 +855,228 @@ cmd_capabilities() {
   return 0
 }
 
+# --- runtime modes ---------------------------------------------------------
+# A runtime mode says what happens at each gate: a decision point in a skill
+# where a person decides today. A gate's policy is one of
+#   ask   a person decides, as the skill says (every gate in manual mode)
+#   auto  the gate's machine resolver passes it (a check, a reviewer, a rule);
+#         when it cannot, the gate parks
+#   park  nobody is asked and nothing is guessed: the work waits
+# The project allows modes and tunes their gates in specs/jsdd.yml; a person
+# picks one with $SDD_MODE. A mode that needs consent is never a project
+# default. Anything invalid falls back to manual, so a mistake asks more, never less.
+# $SDD_PREVIEW_MODES=1 lets a mode that is not available yet resolve, for the
+# kit's own tests: the skills still stop in any mode but manual.
+
+MODES_FILE="$SPECS_DIR/jsdd.yml"
+MODES_REL="specs/jsdd.yml"
+
+# mode  needs-consent  available-in-this-version
+MODE_TABLE='manual      no   yes
+autonomous  yes  no'
+
+# gate, allowed policies, the policy in each mode of MODE_TABLE (in order), then
+# what it decides and which skills reach it. A new mode adds a column; a new gate a row.
+GATES='spec.split               ask|auto|park  ask  auto  Split a spec larger than a few days into several (specify)
+spec.clarify             ask|auto|park  ask  park  Answer a [NEEDS CLARIFICATION] question about behavior (specify)
+depends.override         ask|park       ask  park  Go ahead while a spec in depends_on is not done (plan, spike)
+spec.approve             ask|auto|park  ask  auto  Approve a spec for planning (plan)
+plan.approve             ask|auto|park  ask  auto  Approve a plan or amendment for implementing (implement)
+implement.stuck          ask|auto|park  ask  auto  Fix a failing check, a wrong plan, or a decision the plan lacks (implement)
+spec.change              ask|park       ask  park  Change behavior, scope, or ACs of an approved spec (implement, verify)
+task.manual_check        ask|park       ask  park  Do a check: manual: on a task or acceptance criterion (implement, verify)
+commit                   ask|auto       ask  auto  Commit each finished task (implement)
+verify.gaps              ask|auto|park  ask  auto  Approve, change, or drop the fixes a verification proposes (verify, plan)
+verify.gap_option        ask|auto|park  ask  auto  Pick one option on a gap that has several (verify, plan)
+verify.partial_ref       ask|auto|park  ask  auto  Split or drop a requirement the work only partly delivers (verify)
+verify.capability_merge  ask|auto|park  ask  auto  Merge into a capability entry another spec changed since approval (verify)
+baseline.rows            ask|auto|park  ask  auto  Confirm the behavior rows a survey found (baseline)
+spike.question           ask|park       ask  park  Answer a spike question only the owner can answer (spike)
+merge                    ask|auto|park  ask  park  Merge finished work into the main branch (none yet)'
+
+mode_names() { printf '%s\n' "$MODE_TABLE" | awk '{ printf "%s%s", (NR > 1 ? ", " : ""), $1 }'; }
+# mode_field <mode> <2|3>: needs-consent or available; empty for an unknown mode.
+mode_field() { printf '%s\n' "$MODE_TABLE" | awk -v m="$1" -v f="$2" '$1 == m { print $f }'; }
+mode_index() { printf '%s\n' "$MODE_TABLE" | awk -v m="$1" '$1 == m { print NR }'; }
+gate_row() { printf '%s\n' "$GATES" | awk -v g="$1" '$1 == g'; }
+gate_names() { printf '%s\n' "$GATES" | awk '{ print $1 }'; }
+
+# config_lines: specs/jsdd.yml parsed, one tab-separated line per entry:
+#   S <line> <section>                     a section header (a mode's name)
+#   K <line> <section or -> <key> <value>  a key; - for the top level
+#   ! <line> <message>                     a line that is not in the supported subset
+# The subset: top-level keys and sections one level deep, scalar values and
+# inline lists, # comments. Nothing else in YAML is read.
+config_lines() {
+  [ -f "$MODES_FILE" ] || return 0
+  awk '
+    { sub(/\r$/, ""); line = $0 }
+    { sub(/^[ \t]*#.*/, "", line); sub(/[ \t]+#.*$/, "", line); sub(/[ \t]+$/, "", line) }
+    line == "" { next }
+    line ~ /^ *\t/ { printf "!\t%d\ttabs cannot indent; use spaces\n", NR; next }
+    {
+      ind = match(line, /[^ ]/) - 1
+      body = substr(line, ind + 1)
+      i = index(body, ":")
+      if (!i) { printf "!\t%d\texpected key: value\n", NR; next }
+      k = substr(body, 1, i - 1); v = substr(body, i + 1)
+      gsub(/^[ \t]+|[ \t]+$/, "", k); gsub(/^[ \t]+|[ \t]+$/, "", v)
+      if (k == "" || k ~ /[ \t"'\'']/) { printf "!\t%d\texpected key: value\n", NR; next }
+      if (length(v) >= 2 && (v ~ /^".*"$/ || v ~ /^'\''.*'\''$/)) v = substr(v, 2, length(v) - 2)
+      if (ind == 0) {
+        if (v == "") { sec = k; printf "S\t%d\t%s\n", NR, k }
+        else { sec = ""; printf "K\t%d\t-\t%s\t%s\n", NR, k, v }
+      } else if (sec == "") printf "!\t%d\tindented line outside a section\n", NR
+      else if (v == "") printf "!\t%d\tsections are one level deep: %s.%s needs a value\n", NR, sec, k
+      else printf "K\t%d\t%s\t%s\t%s\n", NR, sec, k, v
+    }' "$MODES_FILE"
+}
+
+# load_config: parse specs/jsdd.yml once per run into CONFIG.
+load_config() { [ -n "${CONFIG_LOADED:-}" ] || { CONFIG=$(config_lines); CONFIG_LOADED=1; }; }
+# config_get <section or -> <key>
+config_get() { printf '%s\n' "$CONFIG" | awk -F '\t' -v s="$1" -v k="$2" '$1 == "K" && $3 == s && $4 == k { print $5; exit }'; }
+# list_items <[a, b]>: one item per line; fails unless the value is an inline list.
+list_items() {
+  case $1 in \[*\]) ;; *) return 1 ;; esac
+  printf '%s' "$1" | sed 's/^\[//; s/\]$//' | tr ',' '\n' | sed 's/^[ \t]*//; s/[ \t]*$//' | sed '/^$/d'
+}
+# mode_allowed <mode>: manual always; any other mode only when modes: lists it.
+mode_allowed() {
+  [ "$1" = manual ] && return 0
+  list_items "$(config_get - modes)" 2>/dev/null | grep -qx "$1"
+}
+
+# config_errors: one line per problem in specs/jsdd.yml; nothing when it is
+# valid or missing. Unknown keys and values are errors, never ignored.
+config_errors() {
+  load_config
+  [ -f "$MODES_FILE" ] || return 0
+  local f=$MODES_REL t n s k v seen="|" row allowed m version="" default="" dline=""
+  while IFS="$(printf '\t')" read -r t n s k v; do
+    case $t in
+      '!') echo "$f:$n: $s" ;;
+      S)
+        case $seen in *"|$s|"*) echo "$f:$n: '$s' appears twice" ;; esac
+        seen="$seen$s|"
+        if [ -z "$(mode_field "$s" 2)" ]; then echo "$f:$n: unknown key '$s' (a section must be a mode: $(mode_names))"
+        elif [ "$s" = manual ]; then echo "$f:$n: manual cannot be changed: every gate in it asks"
+        fi ;;
+      K)
+        case $seen in *"|$s.$k|"*) echo "$f:$n: '$k' appears twice" ;; esac
+        seen="$seen$s.$k|"
+        if [ "$s" = - ]; then
+          case $k in
+            version) version=$v; [ "$v" = 1 ] || echo "$f:$n: version must be 1" ;;
+            modes)
+              if ! list_items "$v" >/dev/null; then echo "$f:$n: modes must be a list, like [manual, autonomous]"
+              else
+                for m in $(list_items "$v"); do
+                  [ -n "$(mode_field "$m" 2)" ] || echo "$f:$n: unknown mode '$m' (modes: $(mode_names))"
+                done
+              fi ;;
+            default) default=$v; dline=$n ;;
+            *)
+              if [ -n "$(mode_field "$k" 2)" ]; then echo "$f:$n: '$k' is a section: put its gates on the lines below it"
+              else echo "$f:$n: unknown key '$k' (top-level keys: version, modes, default, and one section per mode)"; fi ;;
+          esac
+        else
+          row=$(gate_row "$k")
+          if [ -z "$row" ]; then echo "$f:$n: unknown gate '$k' in $s (see: jsdd mode --explain)"
+          else
+            allowed=$(printf '%s' "$row" | awk '{ print $2 }')
+            case "|$allowed|" in *"|$v|"*) ;; *) echo "$f:$n: $s.$k: '$v' is not one of $(printf '%s' "$allowed" | sed 's/|/, /g')" ;; esac
+          fi
+        fi ;;
+    esac
+  done <<EOF
+$CONFIG
+EOF
+  [ -n "$version" ] || echo "$f: add 'version: 1'"
+  if [ -n "$default" ]; then
+    if [ -z "$(mode_field "$default" 2)" ]; then echo "$f:$dline: unknown mode '$default' (modes: $(mode_names))"
+    elif [ "$(mode_field "$default" 2)" = yes ]; then echo "$f:$dline: default cannot be $default: it needs consent, so each person picks it with SDD_MODE"
+    elif ! mode_allowed "$default"; then echo "$f:$dline: default $default is not listed in modes"
+    fi
+  fi
+}
+
+# resolve_mode: sets MODE (the effective mode), MODE_SOURCE (where it came
+# from), MODE_WARN (why a requested mode was not used), and CONFIG_ERRORS.
+resolve_mode() {
+  local want src
+  load_config
+  CONFIG_ERRORS=$(config_errors)
+  MODE_WARN=""
+  if [ -n "${SDD_MODE:-}" ]; then want=$SDD_MODE; src="SDD_MODE"
+  elif [ -z "$CONFIG_ERRORS" ] && [ -n "$(config_get - default)" ]; then want=$(config_get - default); src="$MODES_REL default"
+  else want=manual; src="built-in default"
+  fi
+  MODE=manual; MODE_SOURCE="fallback"
+  if [ -n "$CONFIG_ERRORS" ]; then MODE_WARN="$MODES_REL is invalid, so every gate asks (run: jsdd mode --check)"
+  elif [ -z "$(mode_field "$want" 2)" ]; then MODE_WARN="SDD_MODE=$want is not a mode ($(mode_names)), so every gate asks"
+  elif ! mode_allowed "$want"; then MODE_WARN="$want mode is not allowed here: $MODES_REL does not list it under modes, so every gate asks"
+  elif [ "$(mode_field "$want" 3)" != yes ] && [ "${SDD_PREVIEW_MODES:-}" != 1 ]; then MODE_WARN="$want mode is not available yet in this version of jsdd, so every gate asks"
+  else MODE=$want; MODE_SOURCE=$src
+  fi
+}
+
+# gate_policy <gate> <mode>: the project's override for the mode, else the catalog's.
+gate_policy() {
+  local v
+  [ "$2" = manual ] && { echo ask; return; }
+  v=$(config_get "$2" "$1")
+  if [ -n "$v" ]; then echo "$v"; else gate_row "$1" | awk -v c="$(( $(mode_index "$2") + 2 ))" '{ print $c }'; fi
+}
+
+# mode_banner: the lines the board starts with when the mode is not plain manual.
+mode_banner() {
+  if [ "$MODE" != manual ]; then
+    printf 'MODE: %s (from %s). Some gates pass or park without asking you: jsdd mode --explain\n' "$MODE" "$MODE_SOURCE"
+  fi
+  [ -z "$MODE_WARN" ] || printf 'Mode warning: %s\n' "$MODE_WARN"
+}
+
+cmd_mode() {
+  local g p over
+  resolve_mode
+  case "${1:-}" in
+    "")
+      echo "mode: $MODE ($MODE_SOURCE)"
+      [ -z "$MODE_WARN" ] || echo "warning: $MODE_WARN" ;;
+    --check)
+      if [ -n "$CONFIG_ERRORS" ]; then printf '%s\n' "$CONFIG_ERRORS"
+      elif [ -f "$MODES_FILE" ]; then echo "$MODES_REL: ok"
+      else echo "no $MODES_REL: only manual mode, every gate asks"
+      fi
+      echo "mode: $MODE ($MODE_SOURCE)"
+      [ -z "$MODE_WARN" ] || echo "warning: $MODE_WARN"
+      [ -z "$CONFIG_ERRORS" ] && [ -z "$MODE_WARN" ] ;;
+    --explain)
+      echo "mode: $MODE ($MODE_SOURCE)"
+      [ -z "$MODE_WARN" ] || echo "warning: $MODE_WARN"
+      echo
+      printf '%-24s %-6s %s\n' GATE POLICY "WHAT IT DECIDES"
+      for g in $(gate_names); do
+        p=$(gate_policy "$g" "$MODE"); over=""
+        [ "$MODE" = manual ] || [ -z "$(config_get "$MODE" "$g")" ] || over=" [set in $MODES_REL]"
+        printf '%-24s %-6s %s%s\n' "$g" "$p" "$(gate_row "$g" | awk -v c="$(( $(printf '%s\n' "$MODE_TABLE" | wc -l) + 3 ))" '{ for (i = c; i <= NF; i++) printf "%s%s", $i, (i < NF ? " " : "") }')" "$over"
+      done ;;
+    *) echo "usage: jsdd mode [--check | --explain]" >&2; exit 1 ;;
+  esac
+}
+
+cmd_gate() {
+  [ $# -eq 1 ] || { echo "usage: jsdd gate <gate>   (gates: jsdd mode --explain)" >&2; exit 1; }
+  [ -n "$(gate_row "$1")" ] || { echo "unknown gate '$1' (gates: jsdd mode --explain)" >&2; exit 2; }
+  resolve_mode
+  gate_policy "$1" "$MODE"
+}
+
 cmd_status() {
   local out claims
+  resolve_mode
+  mode_banner
   out=$(board)
   printf '%s\n\nNext up:\n%s\n' "$out" "$(next_up)"
   claims=$(list_claims)
@@ -1124,6 +1352,8 @@ case "${1:-}" in
   claims) shift; cmd_claims "$@" ;;
   coverage) shift; cmd_coverage "$@" ;;
   capabilities) shift; cmd_capabilities "$@" ;;
+  mode) shift; cmd_mode "$@" ;;
+  gate) shift; cmd_gate "$@" ;;
   -h|--help|help|"") usage ;;
   *) echo "unknown command '$1'" >&2; usage >&2; exit 1 ;;
 esac
