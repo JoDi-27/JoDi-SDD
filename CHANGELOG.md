@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## 0.7.6 (2026-11-09)
+
+- Runtime modes, the foundation for running the kit with less hand-holding. Every point where a skill waits for a person is now a named gate (`spec.approve`, `spec.clarify`, `plan.approve`, `verify.gaps`, and 12 more), marked in the skills. A runtime mode decides what happens at each gate: `ask`, `auto`, or `park`. `manual`, where every gate asks, is the default and behaves exactly as before. `autonomous` is reserved but not available yet.
+- New `specs/jsdd.yml` (optional, committed): which modes the project allows, and gate changes for each. New `SDD_MODE` picks a person's mode. A mode that needs consent can never be the project's default. A bad file, or a mode that is unknown, not allowed, or not available, falls back to manual, and the board says why.
+- New `jsdd mode [--check | --explain]` prints the mode and where it came from, validates `specs/jsdd.yml` (exit 1 on any unknown key, gate, or value), and lists every gate with its policy. New `jsdd gate <gate>` prints one gate's policy.
+
 ## 0.7.5 (2026-11-05)
 
 - Scenario tests (`tests/scenarios/run.sh`) run whole workflows through `jsdd` in CI on Linux, macOS bash 3.2, and Windows: migrating a project from the install.sh kit, a feature from planned to done across two sessions with every verification outcome and an amendment, a baseline and its capability document, and parallel worktrees.

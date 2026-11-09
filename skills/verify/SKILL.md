@@ -10,6 +10,8 @@ Spec: $ARGUMENTS
 
 You prove that the spec is met. You do not add features.
 
+**Runtime mode.** Run `jsdd mode` first. The decision points below are marked with their gate, like (gate `verify.gaps`). In `manual` mode every gate is `ask`: a person decides, as the step says. If the mode is anything else, stop and tell the user that this skill runs only in manual mode for now.
+
 ## 1. Gate
 
 - Open `specs/$ARGUMENTS-*/`. The status must be `in-progress`. If it is `blocked` with a `verify-report.md` whose Decision is `declined`, or `approved` with one whose Decision is `approved`, the gaps are waiting to be planned: suggest `/jsdd:plan <ID>` and stop. If it is `draft` with one whose Decision is `approved`, the spec is being revised: suggest `/jsdd:specify <ID>`, then `/jsdd:plan <ID>`, and stop.
@@ -21,9 +23,9 @@ You prove that the spec is met. You do not add features.
 
 - Launch the `sdd-reviewer` agent in `verify` mode with the spec folder and the git range of the work: from the project's main branch (`$SDD_MAIN_BRANCH` if set, else `main`) to HEAD. When the work was committed directly on that branch, name the commits instead (for example the `[<ID>]` commits from `git log --oneline --grep '^\[<ID>\]'`). While it runs, do the checks below yourself.
 - For each AC in `spec.md`, run its verification from the plan's test strategy: the named tests, commands, or a manual check.
-- For a manual check that needs the user (for example, a UI flow), ask them to do it and record what they report.
+- For a manual check that needs the user (for example, a UI flow), ask them to do it and record what they report (gate `task.manual_check`).
 - Fill one row of the Evidence table in `tasks.md` per AC: pass or fail, and concrete evidence (test name, command and its relevant output, or who checked what).
-- Also confirm: the full build and test suite pass, every requirement is covered by a passing AC, every requirement ID in the spec's `refs` is tagged on an R whose ACs pass, and the plan's Deviations reflect what was built. An ID in `refs` that the work only partly delivers is either split into a new row of `docs/requirements.md` (and the delivered part kept in `refs`) or removed from `refs`, with the user's agreement. The Capability changes table has a line for every row an R is tagged with, and each line's change matches the code: a `removes` whose behavior is still there is a gap.
+- Also confirm: the full build and test suite pass, every requirement is covered by a passing AC, every requirement ID in the spec's `refs` is tagged on an R whose ACs pass, and the plan's Deviations reflect what was built. An ID in `refs` that the work only partly delivers is either split into a new row of `docs/requirements.md` (and the delivered part kept in `refs`) or removed from `refs`, with the user's agreement (gate `verify.partial_ref`). The Capability changes table has a line for every row an R is tagged with, and each line's change matches the code: a `removes` whose behavior is still there is a gap.
 - **Converge the code with the spec.** Passing tests are not enough: for each R, find the code that delivers it and check that it does what the R says, no more and no less (`delivered`, `partial`, `missing`, or `contradicted`, with `file:line`). Also look for behavior in the changed code that no R asks for, and for differences from the plan's Design and tasks that its Deviations do not record.
 - Compare with the reviewer's report. Where it says an AC is failed or unproven, or an R is not delivered, and you found otherwise, look again: a test that passes without exercising the behavior does not prove the AC. Treat a disagreement you cannot settle as a gap, or ask the user. Report its other blocking findings to the user.
 
@@ -38,11 +40,11 @@ Write `verify-report.md` in the spec folder from `${CLAUDE_PLUGIN_ROOT}/template
 **Two rounds, then the spec.** A gap on the same AC or R as a gap in the previous round, whose planned fix is now built (its tasks ticked), is a repeated gap: two rounds of fixes have not closed it, so the spec or its check is likely wrong rather than the code. Say so on the gap, and offer only (a) change the spec, or (b) drop the gap. Do not propose another code fix.
 
 - **Converged** (every AC passes, every R is `delivered`, no unrequested behavior, no unrecorded drift): set Outcome `converged` and Decision `none needed`, and go to step 3.
-- **Gaps found:** show the user the report and ask whether to plan the fixes, and for each gap with options, which one. They can approve, change or drop actions, or stop. Record each answer on its gap in the report: `Chosen: b (<by whom>)` or `(dropped by <who>)`.
+- **Gaps found:** show the user the report and ask whether to plan the fixes (gate `verify.gaps`), and for each gap with options, which one (gate `verify.gap_option`). They can approve, change or drop actions, or stop. Record each answer on its gap in the report: `Chosen: b (<by whom>)` or `(dropped by <who>)`.
   - **Never record a decision the user did not give.** Do not assume an answer, pick an option, or approve on the user's behalf. If you cannot get an answer (for example, in a run nobody is watching), leave Decision `pending` and the status `in-progress`, release the spec, and report that the report waits for the user; running `/jsdd:verify <ID>` again asks again.
   - **Approved:** every gap has an answer (a chosen option where it had options, or dropped). Set Decision `approved (<by whom, date>)`.
     - If no kept gap is a spec change, set `status: approved` and add a changelog line: "Verification round <n> found gaps; fixes approved, see verify-report.md." Release the spec, run `jsdd status --write`, and suggest `/jsdd:plan <ID>`, which plans the fixes as an amendment.
-    - If any kept gap is a spec change, the requirements are open again: set `status: draft` and add a changelog line: "Verification round <n> found gaps; spec changes approved (G<n>, …), see verify-report.md." Release the spec, run `jsdd status --write`, and suggest `/jsdd:specify <ID>` to revise the spec, then `/jsdd:plan <ID>`, which plans the rest as an amendment.
+    - If any kept gap is a spec change (gate `spec.change`), the requirements are open again: set `status: draft` and add a changelog line: "Verification round <n> found gaps; spec changes approved (G<n>, …), see verify-report.md." Release the spec, run `jsdd status --write`, and suggest `/jsdd:specify <ID>` to revise the spec, then `/jsdd:plan <ID>`, which plans the rest as an amendment.
   - **Stop:** set Decision `declined (<by whom, date>)`. Set `status: blocked` and add a changelog line: "Blocked: verification round <n> found gaps; see verify-report.md." Release the spec and run `jsdd status --write`. Tell the user that the spec stays blocked until it is concluded: `/jsdd:plan <ID>` resumes it by planning the fixes (running it is the approval; a spec change it sends to `/jsdd:specify` first), or they can drop the spec (`status: dropped`, with the reason in its changelog).
 
 ## 2b. Spike: check the answers
@@ -58,7 +60,7 @@ Write `verify-report.md` in the spec folder from `${CLAUDE_PLUGIN_ROOT}/template
 A baseline proves that the code does what it says today. Nothing is built, so a failure means the description is wrong, not the code.
 
 - Launch the `sdd-reviewer` agent in `baseline` mode with the spec folder. While it runs, do the checks below yourself.
-- Tick each acceptance criterion only with `jsdd done <ID> AC-n`, which runs its check from the repository root and ticks it only when the check passes. For `check: manual: …`, do or ask for the check and run `jsdd done <ID> AC-n --manual "<who checked what>"`.
+- Tick each acceptance criterion only with `jsdd done <ID> AC-n`, which runs its check from the repository root and ticks it only when the check passes. For `check: manual: …`, do or ask for the check (gate `task.manual_check`) and run `jsdd done <ID> AC-n --manual "<who checked what>"`.
 - Fill one row of the spec's Evidence table per AC: pass or fail, and the test name or command output, or who checked what.
 - When a check fails, find out why with the user. If the code behaves differently from the description, rewrite the R and AC to match the code (a baseline records what is, not what should be) and record the gap under Findings with where it went. If the test itself is broken or flaky, use a manual check instead and add a BACKLOG.md "Next" item to fix the test. Never close a baseline with an AC that is not ticked.
 - Also confirm: every R is covered by an AC, every requirement ID in `refs` is tagged on an R and has no entry in its capability document yet (one that has an entry means the entry and the code disagree: settle it with the user and record it under Findings), and every Finding says where it went.
@@ -74,7 +76,7 @@ A baseline proves that the code does what it says today. Nothing is built, so a 
   - `removes`: delete the row's entry.
   - **Older baselines first.** Before the spec's own lines, run `jsdd capabilities <groups>`. A done baseline it lists as not merged (one closed before the kit had capability documents) is how the area worked before this spec: merge its rows first, as `adds` with its ID and the date it closed, so this spec's lines apply on top of them.
   - Add one History row per line: date, spec ID, row, change.
-  - **Changed since?** If the entry was last changed by another spec after this one was approved (its `Last changed` date is later than this spec's approval line in the changelog), it may hold behavior this spec never saw. Show the user the entry and this spec's Rs, and merge what they agree; never drop a statement without asking.
+  - **Changed since?** If the entry was last changed by another spec after this one was approved (its `Last changed` date is later than this spec's approval line in the changelog), it may hold behavior this spec never saw. Show the user the entry and this spec's Rs, and merge what they agree; never drop a statement without asking (gate `verify.capability_merge`).
 - Set `status: done` and `updated` in the spec, and add a changelog line.
 - Run `jsdd capabilities --check <groups>` for the groups merged. It fails when a done spec's line is not in its document's History, or a document has an entry with no row; fix the document before going on.
 - Release the spec and clear its leftover claims: `jsdd release <ID>`, then `jsdd claims --prune`. Run `jsdd status --write`.
