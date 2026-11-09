@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+## 0.7.9 (2026-11-09)
+
+- [meta] Roadmap: product agent for autonomous mode ([#31](https://github.com/JoDi-27/JoDi-SDD/pull/31))
+
 ## 0.7.8 (2026-11-09)
 
 - Claims can be shared through the git remote, so several people on their own clones never pick the same spec or task, or create the same spec ID. Turn it on in each clone with `git config jsdd.claims remote` (remote from `jsdd.claimsRemote`, default `origin`). Each claim is then a ref under `refs/sdd-claims/` on the remote. Taking one is a push the remote accepts only if the ref does not exist yet, so exactly one of two simultaneous claims wins. Release and done are pushes leased on the ref this session last saw. Local mode stays the default and behaves as before.
