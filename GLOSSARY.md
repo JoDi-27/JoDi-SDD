@@ -15,7 +15,7 @@ One line per term, alphabetical. The full reference for statuses, IDs, and file 
 | Brownfield | A project with existing code brought under the kit. Init plans baselines instead of an MVP. |
 | Capability document (`docs/capabilities/<area>.md`) | How one area works now, merged from every spec that changed it when the spec closed. |
 | Check | The command on a task that proves it is done. `jsdd done` ticks the task only when the command exits 0. `check: manual: …` when no command can. |
-| Claim | A lock a session takes on a spec or task before working on it, so parallel sessions don't collide. Lives in `.git/sdd-claims`, never committed. |
+| Claim | A lock a session takes on a spec or task before working on it, so parallel sessions don't collide. Lives in `.git/sdd-claims`, never committed. With remote claims, it is a ref under `refs/sdd-claims/` on the git remote instead. |
 | Commit message format | `[003] T3 …` for a task, `[003] …` for a spec, `[meta] …` for housekeeping. The commit hook rejects anything else. |
 | Constitution (`specs/constitution.md`) | The rules every plan is checked against: the kit's engineering articles plus your project's principles, test command, and architecture rules. |
 | Converged | The verdict that closes a spec: every criterion passes, the code matches every requirement, nothing extra, no unrecorded deviation. |
@@ -37,6 +37,7 @@ One line per term, alphabetical. The full reference for statuses, IDs, and file 
 | Phase | A numbered stage in `PLAN.md`. Phase 0 is spikes and foundations, Phase 1 the first version or next milestone. |
 | plan.md | How a spec will be built: design, decisions, constitution check, test strategy, deviations. No new requirements. |
 | Priority | On a requirement row: M Must, S Should, C Could, W Won't. |
+| Remote claims | Opt-in mode (`git config jsdd.claims remote`) where claims are refs on the git remote, so people on separate clones see each other's claims. The remote accepts each claim only once. |
 | Requirement (FR-AUTH-02) | A row in `docs/requirements.md` with an ID, a priority, and a source. `FR` functional, `NFR` non-functional. |
 | Requirement (R1, R2, …) | A numbered behaviour inside a spec, in EARS form, tagged with the rows it refines. |
 | Roadmap (`PLAN.md`) | Phases of work, each item tagged with the requirements it delivers. Not a spec's `plan.md`. |

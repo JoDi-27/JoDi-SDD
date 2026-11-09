@@ -10,7 +10,7 @@ You don't need to install the plugin to test it. Run Claude Code in a test proje
 claude --plugin-dir path/to/jodi-sdd
 ```
 
-Check the manifests with `claude plugin validate .`, and run `/bin/bash .github/scripts/smoke.sh` for an end-to-end test of `jsdd` and the hooks in a throwaway repository. `/bin/bash tests/scenarios/run.sh [name]` runs the scenario tests: whole workflows (migrating from the install.sh kit, a feature from planned to done across two sessions, a baseline and its capability document, parallel worktrees), each in its own throwaway repository from `tests/fixtures/`. A change to how `jsdd` behaves over a workflow gets a step in a scenario, or a new `NN-name.sh`. [CI](.github/workflows/ci.yml) runs both on every pull request, plus `shellcheck -S warning` on the scripts; the smoke test runs on Linux, on macOS's bash 3.2, and on Windows in Git Bash.
+Check the manifests with `claude plugin validate .`, and run `/bin/bash .github/scripts/smoke.sh` for an end-to-end test of `jsdd` and the hooks in a throwaway repository. `/bin/bash tests/scenarios/run.sh [name]` runs the scenario tests: whole workflows (migrating from the install.sh kit, a feature from planned to done across two sessions, a baseline and its capability document, parallel worktrees, claims shared between two clones through a bare remote), each in its own throwaway repository from `tests/fixtures/`. A change to how `jsdd` behaves over a workflow gets a step in a scenario, or a new `NN-name.sh`. [CI](.github/workflows/ci.yml) runs both on every pull request, plus `shellcheck -S warning` on the scripts; the smoke test runs on Linux, on macOS's bash 3.2, and on Windows in Git Bash.
 
 ## Releasing
 

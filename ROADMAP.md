@@ -86,7 +86,7 @@ Optional domain checklists (security, accessibility, data retention) can add mor
 
 ### 9. Claims shared through the git remote
 
-*From the kit's own limits, not another framework.*
+*From the kit's own limits, not another framework.* **Built:** see `jsdd.claims remote` in [CHANGELOG.md](CHANGELOG.md) (Unreleased). As built: a task done on another branch makes `claim` print that branch, it does not wait for the tick to reach `main`. GitHub accepts `refs/sdd-claims/*`, but other hosts are untested. Switching modes warns about claims still held locally instead of moving them (no `--push-local`). An offline claim is `SDD_CLAIMS=local`, not `--local`.
 
 **Gap:** claims live in `.git/sdd-claims`, which is untracked and local. They coordinate sessions across worktrees on one machine, but two people on their own clones never see each other's claims. Both can pick the same task, and `jsdd new` can give them the same spec ID. The README FAQ's "can two people work on one project?" answer reads as if this were covered.
 

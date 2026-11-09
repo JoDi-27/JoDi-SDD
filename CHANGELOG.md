@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Claims can be shared through the git remote, so several people on their own clones never pick the same spec or task, or create the same spec ID. Turn it on in each clone with `git config jsdd.claims remote` (remote from `jsdd.claimsRemote`, default `origin`). Each claim is then a ref under `refs/sdd-claims/` on the remote. Taking one is a push the remote accepts only if the ref does not exist yet, so exactly one of two simultaneous claims wins. Release and done are pushes leased on the ref this session last saw. Local mode stays the default and behaves as before.
+- In remote mode, reads reuse a fetch made in the last 30 seconds and show `(remote origin, as of HH:MM)`, falling back to the last fetch when the remote is unreachable. Writes fail when it is unreachable; `SDD_CLAIMS=local` takes an offline claim on this machine only, and `jsdd claims` warns about local claims nobody else sees. A remote that hangs is given up after 15 seconds (`SDD_CLAIMS_TIMEOUT`). `jsdd new` also counts the specs on the remote's `main`, and `jsdd claims --prune` reads specs and ticks there.
+- A task marked done records the branch it was done on. When a later claim on the spec comes from a checkout that does not have the tick yet, `jsdd claim` says which branch to merge or rebase onto first, in both modes.
+- New `jsdd claims --mine` lists what this session still holds. The Stop hook uses it instead of its own copy of the claims storage.
+
 ## 0.7.7 (2026-11-09)
 
 - New `autopilot` mode: once you have written and approved a spec, `/jsdd:auto <ID>` runs it to a pull request with nobody asked. It plans the spec and has the `sdd-reviewer` approve the plan, implements every task until its check passes (one commit each), verifies and builds the gaps a check can fix, then pushes the branch and opens a pull request whose body comes from the spec, the evidence, and a run report. A gate only a person can pass (a spec change, a manual check, a product choice, a gap that survives two rounds, a check that keeps failing) parks the spec instead, and the run ends with a draft pull request saying what waits. Every decision the run makes is recorded as `auto: <gate>`, never as yours. The mode needs consent: the project lists it in `specs/jsdd.yml`, and each person picks it with `SDD_MODE=autopilot`.
