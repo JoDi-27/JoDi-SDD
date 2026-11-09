@@ -125,7 +125,25 @@ Several Claude Code sessions can work at once, in one checkout or in separate wo
 
 A claim is a directory created with `mkdir`, which is atomic, under `.git/sdd-claims/`. Every worktree on this machine shares it, and git does not track it. The owner is the Claude Code session ID. `jsdd done` marks a finished task done, and it stays marked until `jsdd claims --prune` sees its tick, because other worktrees do not see the tick until it is merged. `jsdd new` also reserves the spec ID there, so two worktrees never create the same number; prune drops the reservation only once the spec is on `main`. Prune never drops a claim whose spec folder is missing in this worktree, because that spec may live on another worktree's branch.
 
-A session that ends without releasing leaves its claim behind. Claims older than 8 hours (`SDD_STALE_HOURS`) are shown as stale; free one with `jsdd release <ID> [Tn] --force` once you know that session is gone. Claims only coordinate sessions on one machine.
+A session that ends without releasing leaves its claim behind. Claims older than 8 hours (`SDD_STALE_HOURS`) are shown as stale; free one with `jsdd release <ID> [Tn] --force` once you know that session is gone. When a task is marked done, its claim records the branch it was done on. A later claim on the same spec, from a checkout that does not have the tick yet, says which branch to merge or rebase onto first.
+
+### Several people: claims through the git remote
+
+By default, claims only coordinate sessions on one machine. When several people work on their own clones, each of them turns on remote claims once:
+
+```sh
+git config jsdd.claims remote
+git config jsdd.claimsRemote origin   # optional; origin is the default
+```
+
+Each claim then becomes a ref on the remote, `refs/sdd-claims/003-T4` for example. The ref points at an empty commit whose message records who holds the claim. Taking a claim is a push that the remote accepts only if the ref does not exist yet, so when two people claim the same task at once, exactly one wins. Releasing and marking done are pushes leased on the ref this session last saw. The commands, and the skills that call them, stay the same.
+
+- **Reads** (`jsdd status`, `next`, `claims`, the session-start board) fetch the claims, and reuse a fetch made in the last 30 seconds (`SDD_CLAIMS_REUSE`). They show `(remote origin, as of 14:02)`. If the remote is unreachable, they show the last fetch and say so.
+- **Writes** (`claim`, `release`, `done`, `new`, `claims --prune`) always fetch first, and fail when the remote is unreachable, so nothing is claimed that others cannot see. To work offline, `SDD_CLAIMS=local jsdd claim ...` takes a claim on this machine only. Release it the same way once you are back. Until then, `jsdd claims` warns that it is not shared. A remote that stops answering is given up after 15 seconds (`SDD_CLAIMS_TIMEOUT`).
+- **`jsdd new`** also counts the IDs other clones reserved, and the specs on the remote's `main`.
+- **`jsdd claims --prune`** reads the specs on the remote's `main` branch, not your checkout. A task done on your branch keeps its claim until its tick is merged, so nobody else picks it up in the meantime.
+- A plain `git clone` fetches none of these refs, and they are not branches. GitHub accepts them. Other hosts, Gerrit in particular, may refuse custom ref namespaces.
+- The refs coordinate people who cooperate. They enforce nothing: anyone with push access can delete them.
 
 ## Runtime modes
 
@@ -197,6 +215,7 @@ jsdd claim 003 next                  # claim the next free task of 003; prints i
 jsdd done 003 T4                     # run T4's check; only if it passes, tick T4 and mark it done
 jsdd done 004 AC-2                   # the same for a baseline's acceptance criterion
 jsdd claims --prune                  # list claims, dropping the ones no longer needed
+git config jsdd.claims remote        # share claims with other people's clones through origin
 jsdd coverage FR-AUTH                # requirements in a group, with the specs covering each
 jsdd coverage --phase 1 --priority M --missing   # Phase 1 Musts with no spec yet
 jsdd capabilities FR-AUTH            # rows with a capability entry, and live specs about to change them

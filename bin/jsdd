@@ -14,14 +14,28 @@ ROOT="${SDD_ROOT:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}"
 SPECS_DIR="$ROOT/specs"
 STATUSES="draft approved planned in-progress done blocked dropped"
 
-# Claims: see "claims" below.
-if CLAIMS=$(cd "$ROOT" && git rev-parse --git-common-dir 2>/dev/null); then
-  CLAIMS="$(cd "$ROOT" && cd "$CLAIMS" && pwd)/sdd-claims"
+# Claims: see "claims" below. Local mode keeps them in the git common dir, so
+# every worktree of this clone shares them. Remote mode (git config
+# jsdd.claims remote) keeps them as refs on a git remote, shared by every clone,
+# and reads them through a cache in the git common dir. $SDD_CLAIMS overrides
+# the config for one command (SDD_CLAIMS=local to work offline).
+GIT_COMMON=""
+if GIT_COMMON=$(cd "$ROOT" && git rev-parse --git-common-dir 2>/dev/null); then
+  GIT_COMMON="$(cd "$ROOT" && cd "$GIT_COMMON" && pwd)"
+  LOCAL_CLAIMS="$GIT_COMMON/sdd-claims"
 else
-  CLAIMS="$SPECS_DIR/.claims"
+  GIT_COMMON=""; LOCAL_CLAIMS="$SPECS_DIR/.claims"
 fi
+gitcfg() { [ -z "$GIT_COMMON" ] || git -C "$ROOT" config --get "$1" 2>/dev/null || true; }
+CLAIMS_MODE="${SDD_CLAIMS:-$(gitcfg jsdd.claims)}"; CLAIMS_MODE="${CLAIMS_MODE:-local}"
+CLAIMS_REMOTE="$(gitcfg jsdd.claimsRemote)"; CLAIMS_REMOTE="${CLAIMS_REMOTE:-origin}"
+MAIN_BRANCH="${SDD_MAIN_BRANCH:-main}"
+CLAIMS="$LOCAL_CLAIMS"
+[ "$CLAIMS_MODE" != remote ] || [ -z "$GIT_COMMON" ] || CLAIMS="$GIT_COMMON/sdd-claims-remote"
 ME="${CLAUDE_CODE_SESSION_ID:-${USER:-${USERNAME:-unknown}}@$(hostname -s 2>/dev/null || hostname)}"
 STALE_HOURS="${SDD_STALE_HOURS:-8}"
+FETCH_REUSE="${SDD_CLAIMS_REUSE:-30}"       # seconds a fetch of remote claims is reused by reads
+REMOTE_TIMEOUT="${SDD_CLAIMS_TIMEOUT:-15}"  # seconds before a fetch or push is given up
 
 usage() {
   cat <<EOF
@@ -51,6 +65,7 @@ Usage: jsdd <command>
                                 The same for an acceptance criterion of a baseline spec,
                                 in its spec.md; needs the claim on the whole spec
   claims [--prune]              List claims; --prune drops the ones no longer needed
+  claims --mine                 Print the claims this session still holds (for the Stop hook)
 
   coverage [--phase N] [--priority M|S|C|W] [--missing] [ID or group ...]
                                 Requirements in docs/requirements.md and the specs whose
@@ -72,6 +87,12 @@ common dir, so every worktree on this machine shares them, and are never committ
 The owner is \$CLAUDE_CODE_SESSION_ID, or user@host outside Claude Code.
 Claims older than \$SDD_STALE_HOURS (default 8) are shown as stale.
 
+To share claims with other people's clones: git config jsdd.claims remote. Each
+claim is then a ref under refs/sdd-claims/ on the remote jsdd.claimsRemote (default
+origin), taken with a push the remote accepts only once. A claim fails when the
+remote is unreachable; reads fall back to the last fetch. SDD_CLAIMS=local works
+offline for one command, with claims the others do not see.
+
 The runtime mode is manual unless \$SDD_MODE picks another mode that specs/jsdd.yml
 allows. Anything invalid falls back to manual, where every gate asks.
 EOF
@@ -92,7 +113,13 @@ next_id() {
     n=$((10#$n))
     [ "$n" -gt "$max" ] && max=$n
   done
-  # IDs reserved by other sessions or worktrees that are not visible here yet.
+  # Specs already on the remote's main branch, which this branch may not have yet.
+  for d in $( [ -z "$GIT_COMMON" ] || git -C "$ROOT" ls-tree --name-only "refs/remotes/$CLAIMS_REMOTE/$MAIN_BRANCH" -- specs/ 2>/dev/null || true); do
+    d=$(basename "$d"); case $d in [0-9][0-9][0-9]-*) ;; *) continue ;; esac
+    n=$(printf '%s' "$d" | cut -c1-3); n=$((10#$n))
+    [ "$n" -gt "$max" ] && max=$n
+  done
+  # IDs reserved by other sessions, worktrees, or clones that are not visible here yet.
   for d in "$CLAIMS"/id-[0-9][0-9][0-9]/; do
     [ -d "$d" ] || continue
     n=$(basename "$d" | cut -c4-6)
@@ -221,16 +248,198 @@ records() {
 #   $CLAIMS/003-T4/     one task (implement); a "done" file marks it finished,
 #                       for worktrees that do not see the tick in tasks.md yet
 #   $CLAIMS/id-004/     a spec ID reserved by "new"
-# Each claim holds an "owner" file with owner=, since= (epoch), at= (local time).
+# Each claim holds an "owner" file with owner=, since= (epoch), at= (local
+# time), and once a task is done, branch= (where its code is).
+#
+# In remote mode the same layout is a cache of refs on $CLAIMS_REMOTE:
+# refs/sdd-claims/<name> points at an empty-tree commit whose message holds
+# those keys plus user=, host=, state=active|done, and a nonce (so no two
+# claims are ever the same commit). Every write is a push leased on the ref's
+# current value, so the remote decides who wins: a claim succeeds only if the
+# ref does not exist, a release or done only if the ref is still the one this
+# session last saw. Reads fetch refs/sdd-claims/* into refs/sdd-claims-remote/
+# and rebuild the cache, reusing a fetch younger than $FETCH_REUSE seconds.
+# The storage functions below are the only code that writes $CLAIMS.
+
+remote_mode() { [ "$CLAIMS_MODE" = remote ]; }
+CLAIMS_STAMP="$GIT_COMMON/sdd-claims-remote.fetched"   # "<epoch> <HH:MM> ok|offline"
 
 # claim_get <claim> <key>
 claim_get() { sed -n "s/^$2=//p" "$CLAIMS/$1/owner" 2>/dev/null | head -1; }
 
+# with_timeout <command...>: run it, killed after $REMOTE_TIMEOUT seconds (bash
+# 3.2 has no timeout). The watcher's output goes to /dev/null so a leftover
+# sleep never holds a pipe open.
+with_timeout() {
+  local pid w rc=0
+  "$@" & pid=$!
+  ( sleep "$REMOTE_TIMEOUT"; kill "$pid" 2>/dev/null ) >/dev/null 2>&1 &
+  w=$!
+  wait "$pid" 2>/dev/null || rc=$?
+  kill "$w" 2>/dev/null || true; wait "$w" 2>/dev/null || true
+  return $rc
+}
+
+# remote_git <args...>: git against the claims remote, never prompting, with a
+# timeout. Its stderr is kept in $REMOTE_ERR for messages.
+REMOTE_ERR=""
+remote_git() {
+  local f="$GIT_COMMON/sdd-claims-remote.err.$$" rc=0
+  GIT_TERMINAL_PROMPT=0 with_timeout git -C "$ROOT" "$@" 2>"$f" || rc=$?
+  REMOTE_ERR=$(cat "$f" 2>/dev/null || true); rm -f "$f"
+  [ $rc -ne 143 ] || REMOTE_ERR="no answer within ${REMOTE_TIMEOUT}s (\$SDD_CLAIMS_TIMEOUT)"
+  return $rc
+}
+
+# claims_rebuild: the cache, from refs/sdd-claims-remote/*.
+claims_rebuild() {
+  local tmp="$CLAIMS.tmp.$$" line name="" sha
+  rm -rf "$tmp"; mkdir -p "$tmp"
+  git -C "$ROOT" for-each-ref --format='@@claim %(refname:lstrip=2) %(objectname)%0a%(contents)' refs/sdd-claims-remote |
+    while IFS= read -r line; do
+      case $line in
+        "@@claim "*)
+          name=${line#@@claim }; sha=${name##* }; name=${name% *}
+          case $name in ""|*[!A-Za-z0-9-]*) name=""; continue ;; esac   # not a claim name: ignore
+          mkdir "$tmp/$name"; printf 'sha=%s\n' "$sha" > "$tmp/$name/owner" ;;
+        *=*)
+          [ -n "$name" ] || continue
+          printf '%s\n' "$line" >> "$tmp/$name/owner"
+          [ "$line" != state=done ] || : > "$tmp/$name/done" ;;
+      esac
+    done
+  rm -rf "$CLAIMS"
+  mv "$tmp" "$CLAIMS" 2>/dev/null || true
+  # Another session rebuilt it in between: then mv put ours inside theirs.
+  rm -rf "${CLAIMS:?}/$(basename "$tmp")" "$tmp"
+}
+
+# claims_sync [write]: in remote mode, fetch the claims (and the main branch,
+# for new and prune) and rebuild the cache. A read reuses a recent fetch and
+# falls back to the cache when the remote is unreachable; a write always
+# fetches and stops when the remote is unreachable.
+claims_sync() {
+  remote_mode || return 0
+  [ -n "$GIT_COMMON" ] || { echo "remote claims need a git repository" >&2; exit 1; }
+  local now last=0 claims_spec
+  now=$(date +%s)
+  [ -f "$CLAIMS_STAMP" ] && last=$(awk '$3 == "ok" { print $1 }' "$CLAIMS_STAMP")
+  if [ "${1:-}" != write ] && [ $((now - ${last:-0})) -lt "$FETCH_REUSE" ]; then return 0; fi
+  if ! git -C "$ROOT" remote get-url "$CLAIMS_REMOTE" >/dev/null 2>&1; then
+    echo "remote claims: no git remote '$CLAIMS_REMOTE' (set it with: git config jsdd.claimsRemote <name>)" >&2; exit 1
+  fi
+  claims_spec="+refs/sdd-claims/*:refs/sdd-claims-remote/*"
+  # One round trip; without a main branch on the remote, fetch only the claims.
+  if remote_git fetch -q --prune --no-tags "$CLAIMS_REMOTE" "$claims_spec" \
+      "+refs/heads/$MAIN_BRANCH:refs/remotes/$CLAIMS_REMOTE/$MAIN_BRANCH" ||
+    { case $REMOTE_ERR in *"couldn't find remote ref"*) remote_git fetch -q --prune --no-tags "$CLAIMS_REMOTE" "$claims_spec" ;; *) false ;; esac; }; then
+    claims_rebuild
+    printf '%s %s ok\n' "$now" "$(date '+%H:%M')" > "$CLAIMS_STAMP"
+    return 0
+  fi
+  if [ "${1:-}" = write ]; then
+    printf 'cannot reach the claims remote %s, so nothing was claimed or changed:\n%s\n' "$CLAIMS_REMOTE" "$REMOTE_ERR" >&2
+    echo "To work offline, SDD_CLAIMS=local jsdd ... takes a claim on this machine only; other clones do not see it." >&2
+    exit 1
+  fi
+  [ -f "$CLAIMS_STAMP" ] && sed 's/ ok$/ offline/' "$CLAIMS_STAMP" > "$CLAIMS_STAMP.$$" && mv "$CLAIMS_STAMP.$$" "$CLAIMS_STAMP"
+  return 0
+}
+
+# claims_banner: where the claims come from, in remote mode.
+claims_banner() {
+  remote_mode || return 0
+  local at state
+  [ -f "$CLAIMS_STAMP" ] || { echo "  (remote $CLAIMS_REMOTE, never fetched)"; return 0; }
+  read -r _ at state < "$CLAIMS_STAMP"
+  if [ "$state" = ok ]; then echo "  (remote $CLAIMS_REMOTE, as of $at)"
+  else echo "  (remote $CLAIMS_REMOTE unreachable; claims as of $at)"
+  fi
+}
+
+# local_leftovers: in remote mode, claims still held in local mode, which no
+# other clone sees.
+local_leftovers() {
+  remote_mode || return 0
+  local c name out=""
+  for c in "$LOCAL_CLAIMS"/[0-9]*/; do
+    [ -d "$c" ] && [ ! -f "$c/done" ] || continue
+    name=$(basename "$c"); out="$out ${name/-/ },"
+  done
+  [ -z "$out" ] || printf '  warning: claims held in local mode are not shared:%s release them with SDD_CLAIMS=local jsdd release <ID> [Tn]\n' "$out"
+}
+
+# claim_commit <name> <key=value...>: a new empty-tree commit holding the keys.
+claim_commit() {
+  local name=$1 body; shift
+  body=$(printf 'jsdd claim %s\n\n' "$name"; printf '%s\n' "$@" "nonce=$$-$RANDOM-$(date +%s)")
+  GIT_AUTHOR_NAME=jsdd GIT_AUTHOR_EMAIL=jsdd@invalid GIT_COMMITTER_NAME=jsdd GIT_COMMITTER_EMAIL=jsdd@invalid \
+    git -C "$ROOT" commit-tree "$(git -C "$ROOT" hash-object -t tree /dev/null)" -m "$body"
+}
+
+# claim_store <name> <sha>: after a push, put the new commit in the cache.
+claim_store() {
+  git -C "$ROOT" update-ref "refs/sdd-claims-remote/$1" "$2"
+  rm -rf "${CLAIMS:?}/$1"; mkdir -p "$CLAIMS/$1"
+  { printf 'sha=%s\n' "$2"; git -C "$ROOT" log -1 --format=%b "$2" | grep '='; } > "$CLAIMS/$1/owner"
+  if grep -qx state=done "$CLAIMS/$1/owner"; then : > "$CLAIMS/$1/done"; fi
+}
+
+# remote_push <name> <lease> <refspec>: one leased push of refs/sdd-claims/<name>.
+remote_push() { remote_git push -q --no-verify "--force-with-lease=refs/sdd-claims/$1:$2" "$CLAIMS_REMOTE" "$3"; }
+
+# who_am_i: user= and host= for a remote claim.
+who_am_i() {
+  local u
+  u=$(gitcfg user.name); u=${u:-${USER:-${USERNAME:-unknown}}}
+  printf 'user=%s\nhost=%s\n' "$(printf '%s' "$u" | tr -d '\r\n=')" "$(hostname -s 2>/dev/null || hostname)"
+}
+
 # claim_take <claim>: succeeds only if nobody holds it yet.
 claim_take() {
-  mkdir -p "$CLAIMS"
-  mkdir "$CLAIMS/$1" 2>/dev/null || return 1
-  printf 'owner=%s\nsince=%s\nat=%s\n' "$ME" "$(date +%s)" "$(date '+%Y-%m-%d %H:%M')" > "$CLAIMS/$1/owner"
+  local sha since
+  since=$(date +%s)
+  if ! remote_mode; then
+    mkdir -p "$CLAIMS"
+    mkdir "$CLAIMS/$1" 2>/dev/null || return 1
+    printf 'owner=%s\nsince=%s\nat=%s\n' "$ME" "$since" "$(date '+%Y-%m-%d %H:%M')" > "$CLAIMS/$1/owner"
+    return 0
+  fi
+  [ ! -d "$CLAIMS/$1" ] || return 1
+  sha=$(claim_commit "$1" "owner=$ME" "$(who_am_i)" "since=$since" "at=$(date '+%Y-%m-%d %H:%M')" state=active)
+  if remote_push "$1" "" "$sha:refs/sdd-claims/$1"; then claim_store "$1" "$sha"; return 0; fi
+  local err=$REMOTE_ERR
+  claims_sync write
+  [ -d "$CLAIMS/$1" ] && return 1   # another clone took it first
+  printf 'remote claims: the push to %s failed:\n%s\n' "$CLAIMS_REMOTE" "$err" >&2; exit 1
+}
+
+# claim_mark_done <claim>: a finished task; records the branch its code is on.
+claim_mark_done() {
+  local branch sha old
+  branch=$(git -C "$ROOT" rev-parse --abbrev-ref HEAD 2>/dev/null || true)
+  if ! remote_mode; then
+    [ -z "$branch" ] || printf 'branch=%s\n' "$branch" >> "$CLAIMS/$1/owner"
+    : > "$CLAIMS/$1/done"; return 0
+  fi
+  old=$(claim_get "$1" sha)
+  sha=$(claim_commit "$1" "$(grep -v -e '^sha=' -e '^state=' -e '^nonce=' -e '^branch=' "$CLAIMS/$1/owner")" \
+    state=done "branch=$branch" "done_at=$(date '+%Y-%m-%d %H:%M')")
+  if remote_push "$1" "$old" "$sha:refs/sdd-claims/$1"; then claim_store "$1" "$sha"; return 0; fi
+  printf 'remote claims: could not mark %s done on %s (did another session release it?):\n%s\n' "${1/-/ }" "$CLAIMS_REMOTE" "$REMOTE_ERR" >&2
+  echo "The tick is in tasks.md; run the same jsdd done again to retry marking the claim." >&2
+  return 1
+}
+
+# claim_drop <claim>: delete it, if it is still the one this session last saw.
+claim_drop() {
+  if ! remote_mode; then rm -rf "${CLAIMS:?}/$1"; return 0; fi
+  if remote_push "$1" "$(claim_get "$1" sha)" ":refs/sdd-claims/$1"; then
+    git -C "$ROOT" update-ref -d "refs/sdd-claims-remote/$1" 2>/dev/null || true
+    rm -rf "${CLAIMS:?}/$1"; return 0
+  fi
+  printf 'remote claims: could not release %s on %s (it changed since it was read; run again):\n%s\n' "${1/-/ }" "$CLAIMS_REMOTE" "$REMOTE_ERR" >&2
+  return 1
 }
 
 mine() { [ "$(claim_get "$1" owner)" = "$ME" ]; }
@@ -244,9 +453,12 @@ stale() {
 # claim_desc <claim>: "by <owner> since <time>", for messages.
 claim_desc() {
   local o at
-  o=$(claim_get "$1" owner); at=$(claim_get "$1" at)
+  local u h
+  o=$(claim_get "$1" owner); at=$(claim_get "$1" at); u=$(claim_get "$1" user); h=$(claim_get "$1" host)
   if [ "$o" = "$ME" ]; then o=you
   elif [ -z "$o" ]; then o="another session"
+  elif [ -n "$u" ] && [ "$o" = "$u@$h" ]; then o="$u@$h"
+  elif [ -n "$u" ]; then o="$u@$h ($(printf '%s' "$o" | cut -c1-8))"
   else o=$(printf '%s' "$o" | cut -c1-8)
   fi
   printf 'by %s since %s' "$o" "${at:-just now}"
@@ -323,6 +535,20 @@ others_tasks() {
   done
 }
 
+# note_unmerged <ID> <tasks.md> <Tn>: for the earlier tasks that are done but
+# not ticked in this checkout, say which branch holds their code. Finished is
+# not merged: building on them needs that branch first.
+note_unmerged() {
+  local cur u b who
+  cur=$(git -C "$ROOT" rev-parse --abbrev-ref HEAD 2>/dev/null || true)
+  task_rows "$1" "$2" | awk -v t="$3" '$1 == t { stop = 1 } !stop && $2 == 0 && $4 == "done" { print $1 }' |
+    while read -r u; do
+      b=$(claim_get "$1-$u" branch); who=$(claim_get "$1-$u" user)
+      [ -n "$b" ] && [ "$b" != "$cur" ] || continue
+      echo "note: $1 $u is done on branch $b${who:+ (by $who)}, not here yet; merge or rebase onto it before building on it" >&2
+    done
+}
+
 claim_spec() {
   local id=$1 busy
   if [ -d "$CLAIMS/$id" ] && mine "$id"; then echo "$id already claimed by you"; return; fi
@@ -348,7 +574,7 @@ claim_task() {
     if [ -n "$t" ]; then echo "$t"; echo "($id $t is already claimed by you)" >&2; return; fi
     # If another session takes the pick first, mkdir fails and the next pick skips it.
     while t=$(pick_task "$id" "$f") && [ -n "$t" ]; do
-      if claim_take "$id-$t"; then echo "$t"; return; fi
+      if claim_take "$id-$t"; then echo "$t"; note_unmerged "$id" "$f" "$t"; return; fi
     done
     if [ "$(task_note "$id" "$f")" = "all tasks done" ]; then
       echo "every task of $id is ticked or done; next: /jsdd:verify $id" >&2; exit 1
@@ -380,6 +606,7 @@ EOF
   fi
   claim_take "$id-$t" || { echo "$id $t is claimed $(claim_desc "$id-$t")" >&2; exit 1; }
   echo "$t"
+  note_unmerged "$id" "$f" "$t"
 }
 
 # --- commands --------------------------------------------------------------
@@ -493,7 +720,8 @@ cmd_release() {
   if [ $force = 0 ] && ! mine "$name"; then
     echo "$id $t is claimed $(claim_desc "$name"); use --force if that session is gone" >&2; exit 1
   fi
-  rm -rf "$CLAIMS/${name:?}"; echo "released $id $t"
+  claim_drop "$name" || exit 1
+  echo "released $id $t"
 }
 
 # task_line <tasks.md> <Tn>: "<line number><TAB><line>" of the task, outside
@@ -555,7 +783,14 @@ cmd_done() {
   row=$(task_line "$f" "$t")
   [ -n "$row" ] || { echo "$id has no task $t" >&2; exit 1; }
   tab=$'\t'; n=${row%%"$tab"*}; line=${row#*"$tab"}
-  case $line in *"- [x]"*|*"- [X]"*) echo "$id $t is already ticked" >&2; exit 1 ;; esac
+  case $line in *"- [x]"*|*"- [X]"*)
+    # A tick whose claim could not be marked done (remote unreachable): mark it now.
+    if [ -z "$ac" ] && [ ! -f "$CLAIMS/$id-$t/done" ]; then
+      claim_mark_done "$id-$t" || exit 1
+      echo "$id $t is already ticked; marked its claim done"; return
+    fi
+    echo "$id $t is already ticked" >&2; exit 1 ;;
+  esac
   cmd=$(check_of "$line")
 
   if [ -n "$cmd" ]; then
@@ -582,8 +817,8 @@ cmd_done() {
       if (ENVIRON["NOTE"] != "") $0 = $0 " · checked: " ENVIRON["NOTE"] " (" ENVIRON["DATE"] ")"
     }
     { printf "%s%s\n", $0, (crlf ? "\r" : "") }' "$f" > "$tmp" && mv "$tmp" "$f"
-  [ -n "$ac" ] || touch "$CLAIMS/$id-$t/done"
   if [ -n "$cmd" ]; then echo "check passed; ticked $id $t"; else echo "ticked $id $t (manual check recorded)"; fi
+  [ -n "$ac" ] || claim_mark_done "$id-$t" || exit 1
   if [ -z "$ac" ] && [ "$(task_note "$id" "$f")" = "all tasks done" ]; then
     echo "every task of $id is ticked; next: /jsdd:verify $id"
   fi
@@ -604,11 +839,12 @@ list_claims() {
   done
 }
 
-# on_main <ID>: the spec's folder is on the main branch (local or origin), so
-# every worktree sees it once it syncs. Set $SDD_MAIN_BRANCH if it is not main.
+# on_main <ID>: the spec's folder is on the main branch (local, or the claims
+# remote's), so every worktree sees it once it syncs. Set $SDD_MAIN_BRANCH if
+# it is not main.
 on_main() {
-  local b="${SDD_MAIN_BRANCH:-main}" ref
-  for ref in "$b" "origin/$b"; do
+  local ref
+  for ref in "$MAIN_BRANCH" "$CLAIMS_REMOTE/$MAIN_BRANCH"; do
     (cd "$SPECS_DIR" && git ls-tree --name-only "$ref" -- . 2>/dev/null) \
       | grep -q "^$1-" && return 0
   done
@@ -616,33 +852,62 @@ on_main() {
 }
 
 # prune: drop claims whose spec is done or dropped, done markers whose task is
-# ticked here, and ID reservations whose spec is on main. A spec made in
-# another worktree lives only on that branch until it is merged, so a claim or
-# reservation whose spec is not visible here is kept: it may be live.
-# Abandoned claims show as stale instead; release them with --force.
+# ticked, and ID reservations whose spec is on main. A spec made in another
+# worktree lives only on that branch until it is merged, so a claim or
+# reservation whose spec is not visible is kept: it may be live. Local mode
+# reads the specs in this checkout; remote mode reads them on the remote's main
+# branch, which every clone sees, so a tick on one person's branch never frees a
+# task for the others. Abandoned claims show as stale instead; release them
+# with --force.
 prune_claims() {
-  local c name id dir status t
+  local c name id dir status t spec tasks tmp="$CLAIMS.prune.$$" base
+  mkdir -p "$tmp"
   for c in "$CLAIMS"/*/; do
     [ -d "$c" ] || continue
     c=${c%/}; name=$(basename "$c")
     case $name in
-      id-*) on_main "${name#id-}" && rm -rf "$c"; continue ;;
+      id-*) if on_main "${name#id-}"; then claim_drop "$name" || true; fi; continue ;;
     esac
     id=${name%%-*}
-    dir=$(spec_dir "$id" 2>/dev/null) || continue
-    status=$(fm "$dir/spec.md" status)
-    case $status in done|dropped) rm -rf "$c"; continue ;; esac
+    if remote_mode; then
+      base=$(git -C "$ROOT" ls-tree --name-only "refs/remotes/$CLAIMS_REMOTE/$MAIN_BRANCH" -- specs/ 2>/dev/null \
+        | sed 's|^specs/||' | grep "^$id-" | head -1) || true
+      [ -n "$base" ] || continue
+      spec="$tmp/spec.md"; tasks="$tmp/tasks.md"; rm -f "$spec" "$tasks"
+      git -C "$ROOT" show "refs/remotes/$CLAIMS_REMOTE/$MAIN_BRANCH:specs/$base/spec.md" > "$spec" 2>/dev/null || continue
+      git -C "$ROOT" show "refs/remotes/$CLAIMS_REMOTE/$MAIN_BRANCH:specs/$base/tasks.md" > "$tasks" 2>/dev/null || rm -f "$tasks"
+    else
+      dir=$(spec_dir "$id" 2>/dev/null) || continue
+      spec="$dir/spec.md"; tasks="$dir/tasks.md"
+    fi
+    status=$(fm "$spec" status)
+    case $status in done|dropped) claim_drop "$name" || true; continue ;; esac
     case $name in *-T*) ;; *) continue ;; esac
-    [ -f "$c/done" ] && [ -f "$dir/tasks.md" ] || continue
+    [ -f "$c/done" ] && [ -f "$tasks" ] || continue
     t=${name#*-}
-    [ "$(task_rows "$id" "$dir/tasks.md" | awk -v t="$t" '$1 == t { print $2 }')" = 1 ] && rm -rf "$c"
+    if [ "$(task_rows "$id" "$tasks" | awk -v t="$t" '$1 == t { print $2 }')" = 1 ]; then claim_drop "$name" || true; fi
   done
+  rm -rf "$tmp"
   return 0
 }
 
 cmd_claims() {
-  local out
-  [ "${1:-}" = --prune ] && prune_claims
+  local out c held=""
+  case ${1:-} in
+    --prune) prune_claims ;;
+    --mine)
+      # The claims this session still holds: what the Stop hook warns about.
+      for c in "$CLAIMS"/[0-9]*/; do
+        [ -d "$c" ] && [ ! -f "$c/done" ] || continue
+        mine "$(basename "$c")" && held="$held $(basename "$c")"
+      done
+      [ -z "$held" ] || echo "${held# }"
+      return 0 ;;
+    "") ;;
+    *) echo "usage: jsdd claims [--prune | --mine]" >&2; exit 1 ;;
+  esac
+  claims_banner
+  local_leftovers
   out=$(list_claims all)
   printf '%s\n' "${out:-  (no claims)}"
 }
@@ -1080,7 +1345,8 @@ cmd_status() {
   out=$(board)
   printf '%s\n\nNext up:\n%s\n' "$out" "$(next_up)"
   claims=$(list_claims)
-  [ -z "$claims" ] || printf '\nClaims:\n%s\n' "$claims"
+  if [ -n "$claims" ]; then printf '\nClaims:\n'; claims_banner; printf '%s\n' "$claims"; fi
+  local_leftovers
   if [ -f "$REQUIREMENTS" ]; then
     out="$out
 
@@ -1339,6 +1605,14 @@ cmd_init() {
 case "${1:-}" in
   init|-h|--help|help|"") ;;
   *) [ -d "$SPECS_DIR" ] || { echo "no specs/ folder in $ROOT: run 'jsdd init' first" >&2; exit 1; } ;;
+esac
+
+# Remote claims: a write fetches first and stops when the remote is unreachable;
+# a read reuses a recent fetch and falls back to the cache.
+case "${1:-}" in
+  claim|release|done|new) claims_sync write ;;
+  claims) if [ "${2:-}" = --prune ]; then claims_sync write; else claims_sync; fi ;;
+  status|next) claims_sync ;;
 esac
 
 case "${1:-}" in
