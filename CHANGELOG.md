@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.7.7 (2026-11-09)
+
 - New `autopilot` mode: once you have written and approved a spec, `/jsdd:auto <ID>` runs it to a pull request with nobody asked. It plans the spec and has the `sdd-reviewer` approve the plan, implements every task until its check passes (one commit each), verifies and builds the gaps a check can fix, then pushes the branch and opens a pull request whose body comes from the spec, the evidence, and a run report. A gate only a person can pass (a spec change, a manual check, a product choice, a gap that survives two rounds, a check that keeps failing) parks the spec instead, and the run ends with a draft pull request saying what waits. Every decision the run makes is recorded as `auto: <gate>`, never as yours. The mode needs consent: the project lists it in `specs/jsdd.yml`, and each person picks it with `SDD_MODE=autopilot`.
 - New gate `pr.open`, and run budgets in `specs/jsdd.yml` (`attempts_per_task`, default 3; `wall_time_hours`, default 4), shown by `jsdd mode --explain` and printed by `jsdd budget <name>`.
 - New `jsdd park <ID> <gate> <reason>` and `jsdd unpark <ID>`: a parked spec keeps its status, shows as parked on the board and under "Waiting for you", and `jsdd next` skips it.
