@@ -10,7 +10,17 @@ Input: $ARGUMENTS
 
 A baseline writes down how an area works today, so the work that changes it has rows to cite and the kit counts existing behavior as done. It documents; it never changes code or writes tests. Survey only the area the coming work touches, never the whole product.
 
-**Runtime mode.** Run `jsdd mode` first. The decision points below are marked with their gate, like (gate `baseline.rows`). When you reach one, `jsdd gate <gate>` gives its policy. `ask`: a person decides, as the step says; in `manual` mode every gate asks. `auto`: pass it by the gate's autopilot rule (this skill has none: a person runs it before any autopilot run starts, so in `autopilot` mode its gates ask, or park where `jsdd gate` says so), and record the decision as `auto: <gate>` with what passed it, never as a person's; when the rule cannot pass it, park. `park`: ask nobody and guess nothing. Run `jsdd park <ID> <gate> "<what a person must decide>"`, release your claims, run `jsdd status --write`, and stop (inside `/jsdd:auto`, go to its pull request step). In any mode other than `manual` and `autopilot`, stop and tell the user that this skill does not support it yet.
+**Runtime mode.** Run `jsdd mode` first. The decision points below are marked with their gate, like (gate `baseline.rows`). When you reach one, `jsdd gate <gate>` gives its policy. `ask`: a person decides, as the step says; in `manual` mode every gate asks. `auto`: pass it by the gate's rule in "Autonomous rules" below (in `autopilot` mode a person runs this skill before the run starts, so its gates ask, or park where `jsdd gate` says so), and record the decision as `auto: <gate>` with what passed it, never as a person's; when the rule cannot pass it, park. `park`: ask nobody and guess nothing. Run `jsdd park <ID> <gate> "<what a person must decide>"`, release your claims, run `jsdd status --write`, and stop (inside `/jsdd:auto`, go to its pull request step). In a mode other than `manual`, `autopilot`, and `autonomous`, stop and tell the user that this skill does not support it.
+
+## Autonomous rules
+
+In `autonomous` mode (see `/jsdd:auto`), a run takes a baseline spec only when the charter's `types` lists `baseline`, and only one that already exists with its Area filled in: a run never decides which areas to baseline. Nobody is asked anything.
+
+- **Rows** (gate `baseline.rows`): after the survey, write the candidate rows into the spec as step 4 does, then launch the `sdd-reviewer` agent in `baseline` mode. A row it confirms (the code does what the R says, and the AC's test exercises it) goes into `docs/requirements.md` with the source `code (auto): <path>` and the survey's suggested priority, never Must: a Must is the owner's call, so a row the survey calls Must goes in as Should with "(Must? owner to confirm)" in the spec's Findings. A row it does not confirm stays out, listed under Findings. Record the rows as `auto: baseline.rows, sdd-reviewer baseline mode`.
+- **Bugs.** A behavior that looks like a bug is never a row: it goes to Findings and a `BACKLOG.md` "Next" item.
+- **Owner questions** from the survey go under Findings and to `BACKLOG.md`; a row that depends on one stays out. Create no feature specs and no DEC rows that need the owner's reason.
+- **Constitution.** Never add an Architecture checklist rule: that file belongs to people. Propose it under Findings.
+- **Finish** commits as `[<ID>] Baseline (auto)`, sets `status: in-progress`, and returns to `/jsdd:auto`, which goes to `/jsdd:verify <ID>`.
 
 ## 1. Open the baseline
 

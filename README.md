@@ -44,7 +44,7 @@ Along the way:
 - **Existing code is recorded as it's touched.** `/jsdd:baseline <area>` writes down how an area works today, checked by its existing tests. No up-front inventory.
 - **Several sessions can work at once.** Each session claims a spec or task before starting, and claims are shared across git worktrees, so sessions never collide.
 - **Everything traces.** Requirements have IDs, specs cite them, tasks cite the spec's criteria, and commits cite the task. `jsdd coverage` shows what is done.
-- **Or hand it off after the spec.** In autopilot mode (opt-in, per project and per person), `/jsdd:auto <ID>` takes a spec you wrote to a pull request with no questions: the reviewer approves the plan, checks tick the tasks, verification fixes what a check can prove, and anything only you can decide parks the spec and goes in the pull request. See [Autopilot](starters/specs/README.md#autopilot).
+- **Or hand it off after the spec.** In autopilot mode (opt-in, per project and per person), `/jsdd:auto <ID>` takes a spec you wrote to a pull request with no questions: the reviewer approves the plan, checks tick the tasks, verification fixes what a check can prove, and anything only you can decide parks the spec and goes in the pull request. See [Autopilot](starters/specs/README.md#autopilot). With a committed charter, autonomous mode goes further: `/jsdd:auto` works through the queue on its own, settles open questions with recorded defaults when the charter allows, and leaves you pull requests and a morning digest. See [Autonomous](starters/specs/README.md#autonomous) and [the walkthrough](docs/autonomous-mode.md).
 
 Everything is plain Markdown in your repository, driven by one bash script. There's no build step and no service.
 
@@ -98,7 +98,8 @@ Then follow [Your first feature](docs/first-feature.md) on a new project, or [Ex
 | `/jsdd:implement <ID> [task]` | Works through the tasks |
 | `/jsdd:baseline <area or ID>` | Records how an area of existing code works today, checked by its existing tests |
 | `/jsdd:verify <ID>` | Checks the acceptance criteria (or a spike's answers) and the code against the spec, then closes it, or reports gaps for your approval |
-| `/jsdd:auto <ID>` | In autopilot mode: runs an authored spec through plan, implement, and verify to a pull request without asking you anything; parks what only you can decide |
+| `/jsdd:auto <ID>` | In autopilot or autonomous mode: runs a spec through plan, implement, and verify to a pull request without asking you anything; parks what only you can decide |
+| `/jsdd:auto [setup \| --dry-run \| doctor]` | In autonomous mode: works through the queue within the project's charter; `setup` writes the charter, `--dry-run` shows what a run would do, `doctor` checks what it needs |
 
 Under the hood, these commands use the `jsdd` CLI, which the plugin adds to the PATH for Claude's Bash tool. Run `jsdd help` for its subcommands.
 

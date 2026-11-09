@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# PreToolUse on Edit|Write: during this session's autopilot run, block edits to the files a run must never change.
+# PreToolUse on Edit|Write: during this session's autopilot or autonomous run, block edits to the files a run must never change.
 # Exit 2 blocks the call and sends stderr to Claude.
 . "$(dirname "$0")/_lib.sh"   # reads the hook input
 sid=$(json '.session_id // empty')
@@ -19,5 +19,5 @@ case $rel in
   specs/constitution.md|docs/intent.md|specs/jsdd.yml|specs/*/checks.lock) ;;
   *) exit 0 ;;
 esac
-echo "An autopilot run never edits $rel: the constitution, the intent, the mode settings, and frozen checks belong to people. If the run cannot go on without changing it, park the spec: jsdd park <ID> <gate> \"<reason>\"." >&2
+echo "A run never edits $rel: the constitution, the intent, the mode settings (the charter), and frozen checks belong to people. If the run cannot go on without changing it, park the spec: jsdd park <ID> <gate> \"<reason>\"." >&2
 exit 2

@@ -8,11 +8,11 @@ argument-hint: <spec ID> [task ID, e.g. T3]
 
 Arguments: $ARGUMENTS (spec ID, then an optional task ID)
 
-**Runtime mode.** Run `jsdd mode` first. The decision points below are marked with their gate, like (gate `plan.approve`). When you reach one, `jsdd gate <gate>` gives its policy. `ask`: a person decides, as the step says; in `manual` mode every gate asks. `auto`: pass it by the gate's autopilot rule in "Autopilot rules" below, and record the decision as `auto: <gate>` with what passed it, never as a person's; when the rule cannot pass it, park. `park`: ask nobody and guess nothing. Run `jsdd park <ID> <gate> "<what a person must decide>"`, release your claims, run `jsdd status --write`, and stop (inside `/jsdd:auto`, go to its pull request step). In any mode other than `manual` and `autopilot`, stop and tell the user that this skill does not support it yet.
+**Runtime mode.** Run `jsdd mode` first. The decision points below are marked with their gate, like (gate `plan.approve`). When you reach one, `jsdd gate <gate>` gives its policy. `ask`: a person decides, as the step says; in `manual` mode every gate asks. `auto`: pass it by the gate's rule in "Autopilot and autonomous rules" below, and record the decision as `auto: <gate>` with what passed it, never as a person's; when the rule cannot pass it, park. `park`: ask nobody and guess nothing. Run `jsdd park <ID> <gate> "<what a person must decide>"`, release your claims, run `jsdd status --write`, and stop (inside `/jsdd:auto`, go to its pull request step). In a mode other than `manual`, `autopilot`, and `autonomous`, stop and tell the user that this skill does not support it.
 
-## Autopilot rules
+## Autopilot and autonomous rules
 
-In `autopilot` mode (see `/jsdd:auto`), these rules pass this skill's gates. Nobody is asked anything.
+In `autopilot` and `autonomous` mode (see `/jsdd:auto`), these rules pass this skill's gates. Nobody is asked anything.
 
 - **Plan approval** (gate `plan.approve`): passes when the spec folder has `checks.lock` and the changelog says the current plan (or its newest amendment) was approved by `auto: plan.approve`. Otherwise, approve it as `/jsdd:plan`'s autopilot rule does (reviewer rounds, then `jsdd freeze <ID>`), or park. The changelog line for `in-progress` is "Implementing (auto: plan.approve)."
 - **Stuck** (gate `implement.stuck`):

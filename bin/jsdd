@@ -82,14 +82,19 @@ Usage: jsdd <command>
                                 --explain lists every gate and its policy
   gate <gate>                   Print a gate's policy in the current mode: ask, auto, or park
   budget <name>                 Print a run budget in the current mode (attempts_per_task,
-                                wall_time_hours)
+                                wall_time_hours, specs_per_run)
 
   park <ID> <gate> <reason>     Park a spec at a gate nobody can pass without a person: it
                                 keeps its status, waits on the board, and next skips it
   unpark <ID>                   Put a parked spec back in the queue, once a person settled it
-  run start|end|status <ID>     Mark an autopilot run (/jsdd:auto) on a spec for this session;
+  run start|end|status <ID>     Mark a run (/jsdd:auto) on a spec for this session;
                                 the Stop hook keeps the session going while it has work left
+  run start|end|status --loop   Mark an autonomous loop (/jsdd:auto with no ID) for this session
+  run next                      In a loop: start the run on the next spec in the queue, print its ID
   run active | stop-check       The specs this session runs; whether it may stop now
+  auto queue                    The specs an autonomous loop would take now, in order
+  auto dry-run                  What a loop would take, where each spec may park, what it leaves out
+  auto doctor                   Check what an unattended run needs: settings, git, gh, permission mode
   freeze <ID> [--accept <Tn>...]
                                 Record each task's check in checks.lock; done then refuses a
                                 task whose check changed. --accept needs a Deviation naming it
@@ -1174,7 +1179,7 @@ MODES_REL="specs/jsdd.yml"
 
 # mode  needs-consent  available-in-this-version
 MODE_TABLE='manual      no   yes
-autonomous  yes  no
+autonomous  yes  yes
 autopilot   yes  yes'
 
 # gate, allowed policies, the policy in each mode of MODE_TABLE (in order), then
@@ -1194,14 +1199,32 @@ verify.partial_ref       ask|auto|park  ask  auto  park  Split or drop a require
 verify.capability_merge  ask|auto|park  ask  auto  park  Merge into a capability entry another spec changed since approval (verify)
 baseline.rows            ask|auto|park  ask  auto  ask   Confirm the behavior rows a survey found (baseline)
 spike.question           ask|park       ask  park  ask   Answer a spike question only the owner can answer (spike)
-merge                    ask|auto|park  ask  park  park  Merge finished work into the main branch (none yet: autopilot stops at a pull request)
+merge                    ask|auto|park  ask  park  park  Merge the pull request of a converged spec once CI is green (auto; autopilot always stops at the pull request)
 pr.open                  ask|auto|park  ask  auto  auto  Push the run branch and open a pull request for review (auto)'
 
 # Budgets cap an unattended run: name, lowest, highest, default, what it caps.
 # A mode section in specs/jsdd.yml may set them, like its gates.
 BUDGETS='attempts_per_task  1  10  3  Tries at one task, or at fixing one failing check, before it parks
-wall_time_hours    1  24  4  Hours an autopilot run may take before it stops and says where it is'
+wall_time_hours    1  24  4  Hours a run (or an autonomous loop) may take before it stops and says where it is
+specs_per_run      1  20  3  Specs an autonomous loop takes before it stops'
 budget_row() { printf '%s\n' "$BUDGETS" | awk -v b="$1" '$1 == b'; }
+
+# Presets of the autonomous mode: preset, then the gates it changes from the
+# catalog's autonomous column (which is cautious: every product question parks).
+# A gate the project sets in its autonomous section wins over the preset.
+PRESETS='cautious   -
+standard   spec.clarify=auto
+hands-off  spec.clarify=auto merge=auto'
+preset_names() { printf '%s\n' "$PRESETS" | awk '{ printf "%s%s", (NR > 1 ? ", " : ""), $1 }'; }
+# preset_gate <preset> <gate>: the preset's policy for the gate, or nothing.
+preset_gate() { printf '%s\n' "$PRESETS" | awk -v p="$1" -v g="$2" '$1 == p { for (i = 2; i <= NF; i++) if (index($i, g "=") == 1) print substr($i, length(g) + 2) }'; }
+
+# The autonomous section also says what a loop may take (the charter's scope):
+# key, what its value is. Lists are inline, like [1, 2].
+SCOPE_KEYS='phases          PLAN.md phases a loop takes specs from (default: every phase)
+types           Spec types a loop takes: feature, baseline, spike (default: [feature])
+exclude_groups  Requirement groups a loop never touches, like [FR-BILLING]'
+scope_row() { printf '%s\n' "$SCOPE_KEYS" | awk -v k="$1" '$1 == k'; }
 
 mode_names() { printf '%s\n' "$MODE_TABLE" | awk '{ printf "%s%s", (NR > 1 ? ", " : ""), $1 }'; }
 # mode_field <mode> <2|3>: needs-consent or available; empty for an unknown mode.
@@ -1289,12 +1312,27 @@ config_errors() {
               if [ -n "$(mode_field "$k" 2)" ]; then echo "$f:$n: '$k' is a section: put its gates on the lines below it"
               else echo "$f:$n: unknown key '$k' (top-level keys: version, modes, default, and one section per mode)"; fi ;;
           esac
+        elif [ "$k" = preset ] || [ -n "$(scope_row "$k")" ]; then
+          if [ "$s" != autonomous ]; then echo "$f:$n: $k belongs in the autonomous section only"
+          elif [ "$k" = preset ]; then
+            printf '%s\n' "$PRESETS" | awk -v p="$v" '$1 == p { ok = 1 } END { exit !ok }' \
+              || echo "$f:$n: autonomous.preset: '$v' is not one of $(preset_names)"
+          elif ! list_items "$v" >/dev/null; then echo "$f:$n: autonomous.$k must be a list, like [$(case $k in phases) echo 1 ;; types) echo feature ;; *) echo FR-BILLING ;; esac)]"
+          else
+            for m in $(list_items "$v"); do
+              case $k in
+                phases) case $m in *[!0-9]*) echo "$f:$n: autonomous.phases: '$m' is not a phase number" ;; esac ;;
+                types) case $m in feature|baseline|spike) ;; *) echo "$f:$n: autonomous.types: '$m' is not one of feature, baseline, spike" ;; esac ;;
+                exclude_groups) printf '%s' "$m" | grep -Eq '^N?FR-[A-Z0-9]+$' || echo "$f:$n: autonomous.exclude_groups: '$m' is not a requirement group like FR-BILLING" ;;
+              esac
+            done
+          fi
         else
           row=$(gate_row "$k")
           if [ -z "$row" ] && [ -n "$(budget_row "$k")" ]; then
             budget_row "$k" | { read -r _ lo hi _; case $v in ""|*[!0-9]*) false ;; *) [ "$v" -ge "$lo" ] && [ "$v" -le "$hi" ] ;; esac; } \
               || echo "$f:$n: $s.$k: '$v' is not a whole number from $(budget_row "$k" | awk '{ print $2 " to " $3 }')"
-          elif [ -z "$row" ]; then echo "$f:$n: unknown gate '$k' in $s (gates and budgets: jsdd mode --explain)"
+          elif [ -z "$row" ]; then echo "$f:$n: unknown gate '$k' in $s (gates and budgets: jsdd mode --explain$([ "$s" != autonomous ] || echo "; also preset, phases, types, exclude_groups"))"
           else
             allowed=$(printf '%s' "$row" | awk '{ print $2 }')
             case "|$allowed|" in *"|$v|"*) ;; *) echo "$f:$n: $s.$k: '$v' is not one of $(printf '%s' "$allowed" | sed 's/|/, /g')" ;; esac
@@ -1338,12 +1376,18 @@ gate_policy() {
   local v
   [ "$2" = manual ] && { echo ask; return; }
   v=$(config_get "$2" "$1")
+  [ -n "$v" ] || [ "$2" != autonomous ] || v=$(preset_gate "$(autonomous_preset)" "$1")
   if [ -n "$v" ]; then echo "$v"; else gate_row "$1" | awk -v c="$(( $(mode_index "$2") + 2 ))" '{ print $c }'; fi
 }
 
+# autonomous_preset: the project's preset; cautious when none is set.
+autonomous_preset() { local p; p=$(config_get autonomous preset); echo "${p:-cautious}"; }
+
 # mode_banner: the lines the board starts with when the mode is not plain manual.
 mode_banner() {
-  if [ "$MODE" != manual ]; then
+  if [ "$MODE" = autonomous ]; then
+    printf 'MODE: autonomous, preset %s (from %s). Gates pass or park without asking you; parked specs wait under "Waiting for you": jsdd mode --explain\n' "$(autonomous_preset)" "$MODE_SOURCE"
+  elif [ "$MODE" != manual ]; then
     printf 'MODE: %s (from %s). Some gates pass or park without asking you: jsdd mode --explain\n' "$MODE" "$MODE_SOURCE"
   fi
   [ -z "$MODE_WARN" ] || printf 'Mode warning: %s\n' "$MODE_WARN"
@@ -1371,7 +1415,9 @@ cmd_mode() {
       printf '%-24s %-6s %s\n' GATE POLICY "WHAT IT DECIDES"
       for g in $(gate_names); do
         p=$(gate_policy "$g" "$MODE"); over=""
-        [ "$MODE" = manual ] || [ -z "$(config_get "$MODE" "$g")" ] || over=" [set in $MODES_REL]"
+        if [ "$MODE" != manual ] && [ -n "$(config_get "$MODE" "$g")" ]; then over=" [set in $MODES_REL]"
+        elif [ "$MODE" = autonomous ] && [ -n "$(preset_gate "$(autonomous_preset)" "$g")" ]; then over=" [preset $(autonomous_preset)]"
+        fi
         printf '%-24s %-6s %s%s\n' "$g" "$p" "$(gate_row "$g" | awk -v c="$(( $(printf '%s\n' "$MODE_TABLE" | wc -l) + 3 ))" '{ for (i = c; i <= NF; i++) printf "%s%s", $i, (i < NF ? " " : "") }')" "$over"
       done
       if [ "$MODE" != manual ]; then
@@ -1380,6 +1426,14 @@ cmd_mode() {
         printf '%s\n' "$BUDGETS" | while read -r g _ _ _ p; do
           over=""; [ -z "$(config_get "$MODE" "$g")" ] || over=" [set in $MODES_REL]"
           printf '%-24s %-6s %s%s\n' "$g" "$(budget_value "$g")" "$p" "$over"
+        done
+      fi
+      if [ "$MODE" = autonomous ]; then
+        echo
+        echo "preset: $(autonomous_preset)$([ -n "$(config_get autonomous preset)" ] || echo " (none set: the strictest)")"
+        printf '%-24s %-22s %s\n' SCOPE VALUE "WHAT IT SAYS"
+        printf '%s\n' "$SCOPE_KEYS" | while read -r g p; do
+          printf '%-24s %-22s %s\n' "$g" "$(scope_value "$g")" "$p"
         done
       fi ;;
     *) echo "usage: jsdd mode [--check | --explain]" >&2; exit 1 ;;
@@ -1398,6 +1452,13 @@ budget_value() {
   local v=""
   [ -n "$CONFIG_ERRORS" ] || v=$(config_get "$MODE" "$1")
   if [ -n "$v" ]; then echo "$v"; else budget_row "$1" | awk '{ print $4 }'; fi
+}
+
+# scope_value <key>: the autonomous section's list, or its default.
+scope_value() {
+  local v=""
+  [ -n "$CONFIG_ERRORS" ] || v=$(config_get autonomous "$1")
+  if [ -n "$v" ]; then echo "$v"; else case $1 in phases) echo "[any]" ;; types) echo "[feature]" ;; *) echo "[]" ;; esac; fi
 }
 
 cmd_budget() {
@@ -1479,42 +1540,90 @@ cmd_unpark() {
 # the local claims folder, also in remote-claims mode (bash's dynamic scope
 # makes the claim helpers called from here see these locals).
 
-# my_runs: the spec IDs of the runs this session holds.
+# my_runs: the spec IDs of the runs this session holds (not its loop).
 my_runs() {
   local c CLAIMS="$LOCAL_CLAIMS"
   for c in "$CLAIMS"/run-*/; do
     [ -d "$c" ] || continue
     c=${c%/}
+    [ "$(basename "$c")" != run-loop ] || continue
     if [ "$(sed -n 's/^owner=//p' "$c/owner" 2>/dev/null | head -1)" = "$ME" ]; then basename "$c" | cut -c5-; fi
   done
   return 0
 }
+
+# my_loop: succeeds when this session holds the autonomous loop.
+my_loop() { local CLAIMS="$LOCAL_CLAIMS"; [ -d "$CLAIMS/run-loop" ] && mine run-loop; }
 
 # progress_mark: changes whenever the run commits, edits, or ticks anything.
 progress_mark() {
   (cd "$ROOT" && { git rev-parse HEAD 2>/dev/null; git status --porcelain 2>/dev/null; git diff HEAD 2>/dev/null; } | cksum)
 }
 
-# run_hours_left <ID>: whole hours left in the run's wall-time budget (0 or less: spent).
+# run_hours_left <ID|loop>: whole hours left in the wall-time budget (0 or less:
+# spent). A spec run inside this session's loop shares the loop's clock.
 run_hours_left() {
-  local since now
+  local since now r="run-$1"
   local CLAIMS="$LOCAL_CLAIMS"
-  now=$(date +%s); since=$(claim_get "run-$1" since)
+  ! my_loop || r=run-loop
+  now=$(date +%s); since=$(claim_get "$r" since)
   echo $(( $(budget_value wall_time_hours) - ( now - ${since:-$now} ) / 3600 ))
 }
 
+# loop_taken: the spec IDs this session's loop has taken, one per line.
+loop_taken() { local CLAIMS="$LOCAL_CLAIMS"; sed -n 's/^taken=//p' "$CLAIMS/run-loop/owner" 2>/dev/null; }
+
+# loop_left: why the loop cannot take another spec (nothing when it can).
+loop_left() {
+  local n
+  n=$(loop_taken | grep -c . || true)
+  if [ "$(run_hours_left loop)" -le 0 ]; then echo "the wall-time budget is spent ($(budget_value wall_time_hours)h)"
+  elif [ "$n" -ge "$(budget_value specs_per_run)" ]; then echo "it took $n of $(budget_value specs_per_run) specs (specs_per_run)"
+  elif [ -z "$(loop_pick)" ]; then echo "the queue is empty: jsdd auto dry-run says why each spec is left out"
+  fi
+}
+
+# loop_pick: the next spec the loop may take: first in the queue, not taken yet.
+loop_pick() {
+  local id taken
+  taken=" $(loop_taken | tr '\n' ' ') "
+  for id in $(queue_rows | awk -F '\t' '$4 == "take" { print $1 }'); do
+    case $taken in *" $id "*) continue ;; esac
+    echo "$id"; return
+  done
+}
+
 cmd_run() {
-  local sub=${1:-} id dir r again=0 st parked CLAIMS="$LOCAL_CLAIMS" CLAIMS_MODE=local
+  local sub=${1:-} id dir r again=0 st parked left CLAIMS="$LOCAL_CLAIMS" CLAIMS_MODE=local
   case $sub in
     start)
-      [ $# -eq 2 ] || { echo "usage: jsdd run start <ID>" >&2; exit 1; }
-      id=$(norm_id "$2"); dir=$(spec_dir "$id"); r="run-$id"
+      [ $# -eq 2 ] || { echo "usage: jsdd run start <ID> | --loop" >&2; exit 1; }
       resolve_mode
-      if [ "$MODE" != autopilot ]; then
-        echo "an autopilot run needs autopilot mode; the mode is $MODE${MODE_WARN:+ ($MODE_WARN)}." >&2
-        echo "Allow it in $MODES_REL (modes: [manual, autopilot]) and set SDD_MODE=autopilot." >&2
-        exit 1
+      if [ "$2" = --loop ]; then
+        if [ "$MODE" != autonomous ]; then
+          echo "an autonomous loop needs autonomous mode; the mode is $MODE${MODE_WARN:+ ($MODE_WARN)}." >&2
+          echo "Allow it in $MODES_REL (modes: [manual, autonomous]) and set SDD_MODE=autonomous." >&2
+          exit 1
+        fi
+        r=run-loop
+        if [ -d "$CLAIMS/$r" ]; then
+          if mine "$r"; then echo "loop already started by you ($(run_hours_left loop)h left)"; return; fi
+          echo "an autonomous loop is held $(claim_desc "$r"); one loop per clone, specs claimed by other runs are skipped" >&2; exit 1
+        fi
+        claim_take "$r" || { echo "an autonomous loop is held $(claim_desc "$r")" >&2; exit 1; }
+        printf 'branch=%s\n' "$(cd "$ROOT" && git rev-parse --abbrev-ref HEAD 2>/dev/null || echo -)" >> "$CLAIMS/$r/owner"
+        echo "loop started: preset $(autonomous_preset), up to $(budget_value specs_per_run) specs in $(budget_value wall_time_hours)h, $(budget_value attempts_per_task) attempts per task"
+        echo "take the first spec with: jsdd run next"
+        return
       fi
+      id=$(norm_id "$2"); dir=$(spec_dir "$id"); r="run-$id"
+      case $MODE in
+        autopilot|autonomous) ;;
+        *)
+          echo "a run needs autopilot or autonomous mode; the mode is $MODE${MODE_WARN:+ ($MODE_WARN)}." >&2
+          echo "Allow one in $MODES_REL (modes: [manual, autopilot]) and set SDD_MODE=autopilot." >&2
+          exit 1 ;;
+      esac
       parked=$(fm "$dir/spec.md" parked)
       [ -z "$parked" ] || { echo "$id is parked: $parked. Settle it, then: jsdd unpark $id" >&2; exit 1; }
       if [ -d "$CLAIMS/$r" ]; then
@@ -1523,19 +1632,43 @@ cmd_run() {
       fi
       claim_take "$r" || { echo "run $id is held $(claim_desc "$r")" >&2; exit 1; }
       printf 'branch=%s\n' "$(cd "$ROOT" && git rev-parse --abbrev-ref HEAD 2>/dev/null || echo -)" >> "$CLAIMS/$r/owner"
-      echo "run $id started: $(budget_value wall_time_hours)h, $(budget_value attempts_per_task) attempts per task" ;;
+      echo "run $id started: $(run_hours_left "$id")h, $(budget_value attempts_per_task) attempts per task" ;;
+    next)
+      # The loop's next spec: prints its ID and starts its run, or says why there is none.
+      resolve_mode
+      my_loop || { echo "no autonomous loop in this session: jsdd run start --loop" >&2; exit 1; }
+      id=$(my_runs | head -1)
+      [ -z "$id" ] || { echo "the run on $id is still open: finish it (pull request, run report), then: jsdd run end $id" >&2; exit 1; }
+      left=$(loop_left)
+      [ -z "$left" ] || { echo "the loop takes no more specs: $left. Write the loop report and run: jsdd run end --loop" >&2; exit 1; }
+      id=$(loop_pick)
+      printf 'taken=%s\n' "$id" >> "$CLAIMS/run-loop/owner"
+      "$0" run start "$id" >&2
+      echo "$id" ;;
     end)
-      [ $# -ge 2 ] || { echo "usage: jsdd run end <ID> [--force]" >&2; exit 1; }
-      id=$(norm_id "$2"); r="run-$id"
+      [ $# -ge 2 ] || { echo "usage: jsdd run end <ID> | --loop [--force]" >&2; exit 1; }
+      if [ "$2" = --loop ]; then r=run-loop; id=loop; else id=$(norm_id "$2"); r="run-$id"; fi
       [ -d "$CLAIMS/$r" ] || { echo "no run on $id"; return; }
       if [ "${3:-}" != --force ] && ! mine "$r"; then
         echo "run $id is held $(claim_desc "$r"); use --force if that session is gone" >&2; exit 1
       fi
-      rm -rf "${CLAIMS:?}/$r"; echo "run $id ended" ;;
+      if [ "$r" = run-loop ]; then
+        echo "loop ended after $(loop_taken | grep -c . || true) specs: $(loop_taken | paste -sd ' ' -)"
+        rm -rf "${CLAIMS:?}/$r"
+      else
+        rm -rf "${CLAIMS:?}/$r"; echo "run $id ended"
+      fi ;;
     status)
-      [ $# -eq 2 ] || { echo "usage: jsdd run status <ID>" >&2; exit 1; }
-      id=$(norm_id "$2"); dir=$(spec_dir "$id"); r="run-$id"
+      [ $# -eq 2 ] || { echo "usage: jsdd run status <ID> | --loop" >&2; exit 1; }
       resolve_mode
+      if [ "$2" = --loop ]; then
+        my_loop || { echo "no autonomous loop in this session" >&2; exit 1; }
+        echo "loop $(claim_desc run-loop): took $(loop_taken | grep -c . || true) of $(budget_value specs_per_run) specs ($(loop_taken | paste -sd ' ' -)); $(run_hours_left loop)h left of $(budget_value wall_time_hours)h"
+        left=$(loop_left)
+        if [ -n "$left" ]; then echo "takes no more specs: $left"; else echo "next: $(loop_pick)"; fi
+        return
+      fi
+      id=$(norm_id "$2"); dir=$(spec_dir "$id"); r="run-$id"
       [ -d "$CLAIMS/$r" ] || { echo "no run on $id" >&2; exit 1; }
       st=$(fm "$dir/spec.md" status); parked=$(fm "$dir/spec.md" parked)
       echo "run $id $(claim_desc "$r"), on branch $(claim_get "$r" branch); spec $st${parked:+, parked at $parked}"
@@ -1543,7 +1676,7 @@ cmd_run() {
         echo "wall-time budget spent ($(budget_value wall_time_hours)h): stop, write the run report, and end the run" >&2; exit 1
       fi
       echo "$(run_hours_left "$id")h left of $(budget_value wall_time_hours)h; $(budget_value attempts_per_task) attempts per task" ;;
-    active) my_runs ;;
+    active) my_runs; if my_loop; then echo loop; fi ;;
     stop-check)
       # Prints "block: <reason>" while this session's run must go on, else
       # "allow: <note>" or nothing. --again: the session is already continuing
@@ -1553,20 +1686,189 @@ cmd_run() {
       for id in $(my_runs); do
         r="run-$id"; dir=$(spec_dir "$id" 2>/dev/null) || continue
         if [ $again = 1 ] && [ "$(cat "$CLAIMS/$r/mark" 2>/dev/null)" = "$(progress_mark)" ]; then
-          echo "allow: the autopilot run on $id made no progress since it was told to go on; it stops here. Resume with /jsdd:auto $id, or end it with: jsdd run end $id"; continue
+          echo "allow: the run on $id made no progress since it was told to go on; it stops here. Resume with /jsdd:auto $id, or end it with: jsdd run end $id$(! my_loop || echo " and jsdd run end --loop")"; continue
         fi
         progress_mark > "$CLAIMS/$r/mark"
         parked=$(fm "$dir/spec.md" parked)
         if [ -n "$parked" ]; then
-          echo "block: The autopilot run on $id parked at $parked. Finish the /jsdd:auto $id run without asking anyone: the run report, the draft pull request, then: jsdd run end $id"
+          echo "block: The run on $id parked at $parked. Finish the /jsdd:auto run on $id without asking anyone: the run report, the draft pull request, then: jsdd run end $id"
         elif [ "$(run_hours_left "$id")" -le 0 ]; then
-          echo "block: The autopilot run on $id spent its wall-time budget. Stop building and finish the /jsdd:auto $id run: the run report, a draft pull request, then: jsdd run end $id"
+          echo "block: The run on $id spent its wall-time budget. Stop building and finish the /jsdd:auto run on $id: the run report, a draft pull request, then: jsdd run end $id"
         else
-          echo "block: The autopilot run on $id is not finished (spec $(fm "$dir/spec.md" status)). Keep going with the /jsdd:auto $id steps without asking anyone: plan, implement, verify, then open the pull request. If a gate cannot pass, park it: jsdd park $id <gate> \"<reason>\". When the run is done or parked, write the run report and run: jsdd run end $id"
+          echo "block: The run on $id is not finished (spec $(fm "$dir/spec.md" status)). Keep going with the /jsdd:auto steps for $id without asking anyone. If a gate cannot pass, park it: jsdd park $id <gate> \"<reason>\". When the run is done or parked, write the run report, open the pull request, and run: jsdd run end $id"
         fi
         return 0
-      done ;;
-    *) echo "usage: jsdd run <start|end|status|active|stop-check> [ID]" >&2; exit 1 ;;
+      done
+      if my_loop && [ -z "$(my_runs)" ]; then
+        if [ $again = 1 ] && [ "$(cat "$CLAIMS/run-loop/mark" 2>/dev/null)" = "$(progress_mark)" ]; then
+          echo "allow: the autonomous loop made no progress since it was told to go on; it stops here. End it with: jsdd run end --loop"; return 0
+        fi
+        progress_mark > "$CLAIMS/run-loop/mark"
+        left=$(loop_left)
+        if [ -z "$left" ]; then
+          echo "block: The autonomous loop has work and budget left. Take the next spec with: jsdd run next, and follow the /jsdd:auto steps for it without asking anyone."
+        else
+          echo "block: The autonomous loop takes no more specs: $left. Write the loop report (/jsdd:auto, step 6), then run: jsdd run end --loop"
+        fi
+      fi ;;
+    *) echo "usage: jsdd run <start|next|end|status|active|stop-check> [ID | --loop]" >&2; exit 1 ;;
+  esac
+}
+
+# --- autonomous queue, dry run, doctor -----------------------------------
+# The autonomous loop takes specs from the queue: what jsdd next would offer,
+# narrowed to the charter's scope in the autonomous section of specs/jsdd.yml,
+# minus what only a person can move (blocked, parked, a spec change from verify)
+# and what another session holds.
+
+# in_list <item> <[a, b]>: the item is in the inline list.
+in_list() { list_items "$2" 2>/dev/null | grep -qx "$1"; }
+
+# queue_rows: one tab-separated line per live spec, in the order a loop takes them:
+# id, type, status, take|skip, why (for a skip) or the next step (for a take).
+queue_rows() {
+  local phases types groups r id type st phase deps open tnote parked dir refs ref g why num
+  phases=$(config_get autonomous phases); types=$(scope_value types); groups=$(config_get autonomous exclude_groups)
+  records | sort | awk -F '\t' '
+    { st[$1] = $3; line[NR] = $0; id[NR] = $1 }
+    END {
+      rank["in-progress"] = 1; rank["planned"] = 2; rank["approved"] = 3; rank["draft"] = 4; rank["blocked"] = 5
+      for (r = 1; r <= 5; r++) for (i = 1; i <= NR; i++) {
+        if (rank[st[id[i]]] != r) continue
+        split(line[i], f, "\t"); waiting = ""
+        if (f[5] != "-") { m = split(f[5], d, ","); for (j = 1; j <= m; j++) if (st[d[j]] != "done") waiting = waiting " " d[j] }
+        print line[i] "\t" (waiting == "" ? "-" : substr(waiting, 2))
+      }
+    }' | while IFS="$(printf '\t')" read -r id type st phase deps _ _ open _ dir _ tnote parked waiting; do
+    num=${dir%%-*}; why=""
+    refs=$(fm "$SPECS_DIR/$dir/spec.md" refs | tr -d "[]\"'" | tr ',' ' ')
+    if [ "$st" = blocked ]; then why="blocked: a person resumes it (/jsdd:plan $id)"
+    elif [ "$parked" != - ]; then why="parked at $parked"
+    elif [ "$tnote" = "verify spec change" ]; then why="a spec change from verify waits for a person (/jsdd:specify $id)"
+    elif ! in_list "$type" "$types"; then why="type $type is not in autonomous.types $types"
+    elif [ -n "$phases" ] && ! in_list "$phase" "$phases"; then why="phase $phase is not in autonomous.phases $phases"
+    elif [ "$waiting" != - ]; then why="waiting on $waiting"
+    elif [ -d "$CLAIMS/$num" ] && ! mine "$num"; then why="claimed $(claim_desc "$num")"
+    elif [ -d "$LOCAL_CLAIMS/run-$id" ] && ! CLAIMS="$LOCAL_CLAIMS" mine "run-$id"; then why="another session runs it"
+    elif [ "$type" = baseline ] && [ "$st" = draft ] && [ "$open" -gt 0 ]; then why="$open open questions for the owner in a baseline"
+    fi
+    if [ -z "$why" ] && [ -n "$groups" ]; then
+      for ref in $refs; do
+        for g in $(list_items "$groups"); do
+          case $ref in "$g"|"$g"-*) why="refs $ref, in autonomous.exclude_groups"; break 2 ;; esac
+        done
+      done
+    fi
+    if [ -n "$why" ]; then printf '%s\t%s\t%s\tskip\t%s\n' "$id" "$type" "$st" "$why"; continue; fi
+    case $type in
+      spike) why="spike: research what the docs and code can answer" ;;
+      baseline) why=$([ "$st" = draft ] && echo "baseline: survey and confirm rows" || echo "baseline: verify") ;;
+      *) case $st in
+           draft) why="feature: review spec, plan, implement, verify" ;;
+           approved) why="feature: plan, implement, verify" ;;
+           *) why="feature: implement, verify" ;;
+         esac ;;
+    esac
+    printf '%s\t%s\t%s\ttake\t%s\n' "$id" "$type" "$st" "$why"
+  done
+}
+
+# would_park <ID> <type> <status>: the gates a run on the spec would park at,
+# from what is on disk now. One line each; nothing when none is known.
+would_park() {
+  local dir open manual
+  dir=$(spec_dir "$1")
+  open=$(count '\[NEEDS CLARIFICATION' "$dir/spec.md")
+  if [ "$open" -gt 0 ]; then
+    if [ "$(gate_policy spec.clarify autonomous)" = park ]; then echo "would park at spec.clarify: $open open questions (preset standard takes recorded defaults as assumptions)"
+    else echo "answers $open open questions with recorded defaults, as assumptions (auto: spec.clarify), or parks where there is none"; fi
+  fi
+  # shellcheck disable=SC2046  # tasks.md is an optional extra argument
+  manual=$(uncomment "$dir/spec.md" $( [ -f "$dir/tasks.md" ] && echo "$dir/tasks.md" ) | grep -Eo '\*\*(T[0-9]+|AC-[0-9]+)\*\*.*check: manual' | grep -Eo '^\*\*(T[0-9]+|AC-[0-9]+)' | tr -d '*' | paste -sd ' ' - || true)
+  [ -z "$manual" ] || [ "$(gate_policy task.manual_check autonomous)" != park ] || echo "would park at task.manual_check: $manual needs a person"
+  if [ "$2" = spike ] && [ "$(gate_policy spike.question autonomous)" = park ]; then echo "parks at spike.question if a question needs the owner"; fi
+  if [ "$2" = feature ] && [ "$3" = draft ] && [ "$(gate_policy spec.approve autonomous)" = park ]; then echo "would park at spec.approve"; fi
+  return 0
+}
+
+cmd_auto() {
+  local sub=${1:-} rows id type st verdict why n=0 max fails=0 warns=0 f mode_ok perm=""
+  case $sub in
+    queue)
+      resolve_mode; load_config
+      queue_rows | awk -F '\t' '$4 == "take" { printf "%s\t%s\t%s\t%s\n", $1, $2, $3, $5 }' ;;
+    dry-run)
+      resolve_mode
+      [ -z "$CONFIG_ERRORS" ] || { printf '%s\n' "$CONFIG_ERRORS"; echo "fix $MODES_REL first: jsdd mode --check" >&2; exit 1; }
+      mode_allowed autonomous || echo "note: $MODES_REL does not list autonomous under modes yet, so no run can start"
+      max=$(MODE=autonomous budget_value specs_per_run)
+      echo "autonomous, preset $(autonomous_preset): up to $max specs in $(MODE=autonomous budget_value wall_time_hours)h; types $(scope_value types), phases $(scope_value phases), excluding $(scope_value exclude_groups)"
+      echo "merge: $( [ "$(gate_policy merge autonomous)" = auto ] && echo "a converged spec with green CI is merged" || echo "each spec ends at a pull request for you to merge")"
+      echo
+      rows=$(queue_rows)
+      echo "A loop would take, in order:"
+      while IFS="$(printf '\t')" read -r id type st verdict why; do
+        [ "$verdict" = take ] || continue
+        n=$((n + 1))
+        printf '  %-4s %-8s %-11s %s%s\n' "$id" "$type" "$st" "$why" "$([ $n -le "$max" ] || echo "   (after specs_per_run: next loop)")"
+        would_park "$id" "$type" "$st" | sed 's/^/         /'
+      done <<EOF
+$rows
+EOF
+      [ $n -gt 0 ] || echo "  (nothing)"
+      if printf '%s\n' "$rows" | grep -q "$(printf '\tskip\t')"; then
+        echo "Left out:"
+        printf '%s\n' "$rows" | awk -F '\t' '$4 == "skip" { printf "  %-4s %s\n", $1, $5 }'
+      fi ;;
+    doctor)
+      resolve_mode
+      d_ok() { echo "ok    $*"; }
+      d_bad() { echo "FIX   $1"; [ -z "${2:-}" ] || printf '      %s\n' "$2"; fails=$((fails + 1)); }
+      d_warn() { echo "warn  $1"; [ -z "${2:-}" ] || printf '      %s\n' "$2"; warns=$((warns + 1)); }
+      if [ -n "$CONFIG_ERRORS" ]; then d_bad "$MODES_REL is invalid" "$(printf '%s' "$CONFIG_ERRORS" | head -3 | paste -sd ';' -) (all of them: jsdd mode --check)"
+      elif [ ! -f "$MODES_FILE" ]; then d_bad "no $MODES_REL" "run /jsdd:auto setup, or write: version: 1 / modes: [manual, autonomous] / autonomous: / preset: cautious"
+      else d_ok "$MODES_REL is valid"
+      fi
+      mode_ok=1
+      case $MODE in
+        autonomous|autopilot) d_ok "mode: $MODE ($MODE_SOURCE)" ;;
+        *) mode_ok=""
+           d_bad "mode is $MODE${MODE_WARN:+: $MODE_WARN}" "set SDD_MODE=autonomous in your shell, or under \"env\" in .claude/settings.local.json, then start a new session" ;;
+      esac
+      if [ -z "$GIT_COMMON" ]; then d_bad "not a git repository" "git init, and commit the project"
+      else
+        if [ -n "$(cd "$ROOT" && git status --porcelain 2>/dev/null | grep -v '^?? specs/STATUS.md$' || true)" ]; then
+          d_bad "the work tree has uncommitted changes" "commit or stash them: a run commits each task and must not sweep up your work"
+        else d_ok "the work tree is clean"; fi
+        if [ "$(cd "$ROOT" && git rev-parse --abbrev-ref HEAD 2>/dev/null)" = "$MAIN_BRANCH" ]; then
+          d_ok "on $MAIN_BRANCH: each run creates its own branch (autonomous/<ID>-<slug>)"
+        fi
+      fi
+      if [ -n "$mode_ok" ] && [ "$(gate_policy pr.open "$MODE")" != park ]; then
+        if (cd "$ROOT" && git remote get-url origin >/dev/null 2>&1); then d_ok "remote origin is set"
+        else d_warn "no remote named origin, so runs end with a local branch, not a pull request" "git remote add origin <url>"; fi
+        if ! command -v gh >/dev/null 2>&1; then d_warn "gh is not installed: no pull requests" "install the GitHub CLI (https://cli.github.com), then: gh auth login"
+        elif ! gh auth status >/dev/null 2>&1; then d_warn "gh is not signed in, so runs end with a local branch" "gh auth login"
+        else d_ok "gh is signed in"; fi
+      fi
+      [ "$MODE" != autonomous ] || [ "$(gate_policy merge autonomous)" != auto ] \
+        || d_warn "preset $(autonomous_preset) merges converged specs once CI is green" "make sure the main branch requires CI checks; without any check, a run never merges"
+      for f in "$ROOT/.claude/settings.local.json" "$ROOT/.claude/settings.json" "$HOME/.claude/settings.json"; do
+        [ -f "$f" ] || continue
+        perm=$(tr -d '\r\n' <"$f" | grep -Eo '"defaultMode"[[:space:]]*:[[:space:]]*"[A-Za-z]+"' | head -1 | sed 's/.*"\([A-Za-z]*\)"$/\1/') || true
+        [ -z "$perm" ] || { perm="$perm (from ${f#"$ROOT"/})"; break; }
+      done
+      case $perm in
+        bypassPermissions*|auto\ *) d_ok "permission mode: $perm, so a run is not stopped by prompts" ;;
+        acceptEdits*) d_warn "permission mode: $perm: edits pass, but commands still prompt and stall the run" \
+          "add allow rules to .claude/settings.local.json: \"permissions\": {\"allow\": [\"Bash(jsdd *)\", \"Bash(git *)\", \"Bash(gh *)\", \"Bash(<your test command> *)\"]}" ;;
+        *) d_warn "permission mode: ${perm:-default}: every edit and command prompts, so an unattended run stalls at the first one" \
+          "start the session with: claude --permission-mode acceptEdits, and allow jsdd, git, gh, and your test command in .claude/settings.local.json (\"permissions\": {\"allow\": [\"Bash(jsdd *)\", \"Bash(git *)\", \"Bash(gh *)\"]}); bypassPermissions only in a container or VM" ;;
+      esac
+      echo
+      if [ $fails -gt 0 ]; then echo "$fails to fix$([ $warns -eq 0 ] || echo ", $warns warnings")"; exit 1; fi
+      echo "ready$([ $warns -eq 0 ] || echo ", $warns warnings")" ;;
+    *) echo "usage: jsdd auto <queue | dry-run | doctor>" >&2; exit 1 ;;
   esac
 }
 
@@ -1951,6 +2253,7 @@ case "${1:-}" in
   park) shift; cmd_park "$@" ;;
   unpark) shift; cmd_unpark "$@" ;;
   run) shift; cmd_run "$@" ;;
+  auto) shift; cmd_auto "$@" ;;
   freeze) shift; cmd_freeze "$@" ;;
   pr) shift; cmd_pr "$@" ;;
   -h|--help|help|"") usage ;;
