@@ -16,7 +16,7 @@ case $OSTYPE in
   *) ln -s "$BASH" "$TMP/bin/bash"; PATH=$TMP/bin:$PATH ;;
 esac
 export CLAUDE_CODE_SESSION_ID=session-a
-unset SDD_MAIN_BRANCH SDD_REQUIREMENTS
+unset SDD_MAIN_BRANCH SDD_REQUIREMENTS SDD_MODE SDD_PREVIEW_MODES
 
 jsdd() { "$KIT/bin/jsdd" "$@"; }
 step() { printf '  - %s\n' "$*"; }
