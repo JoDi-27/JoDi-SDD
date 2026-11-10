@@ -703,6 +703,12 @@ EOF
 
 JSON=""   # set by the dispatcher
 
+# On Windows, jq.exe ends lines with CRLF: drop the CRs, so a value read with
+# jq -r compares equal (pipefail keeps jq's exit code).
+case ${OSTYPE:-} in
+  msys*|cygwin*) jq() { command jq "$@" | tr -d '\r'; } ;;
+esac
+
 need_jq() { command -v jq >/dev/null 2>&1 || { echo "JSON output needs jq: https://jqlang.github.io/jq/" >&2; exit 2; }; }
 jsdd_version() { sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$PLUGIN_DIR/.claude-plugin/plugin.json" 2>/dev/null | head -1; }
 
@@ -2346,8 +2352,10 @@ iso_time() {
 # new_uuid: a random UUID, lower case.
 new_uuid() {
   local u=""
-  u=$(uuidgen 2>/dev/null) || u=$(cat /proc/sys/kernel/random/uuid 2>/dev/null) \
-    || u=$(python3 -c 'import uuid; print(uuid.uuid4())' 2>/dev/null) || u=$(python -c 'import uuid; print(uuid.uuid4())')
+  u=$(uuidgen 2>/dev/null) || u=$(cat /proc/sys/kernel/random/uuid 2>/dev/null) || u=""
+  # Git Bash has neither: build a version-4 UUID from $RANDOM.
+  [ -n "$u" ] || u=$(printf '%04x%04x-%04x-4%03x-%04x-%04x%04x%04x' $RANDOM $RANDOM $RANDOM $((RANDOM % 4096)) \
+    $(( (RANDOM % 16384) + 32768 )) $RANDOM $RANDOM $RANDOM)
   printf '%s' "$u" | tr 'A-F' 'a-f'
 }
 

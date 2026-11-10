@@ -25,6 +25,8 @@ $1"; }
 # rc <want> <command...>: the command's exit code.
 rc() { local want=$1 got=0; shift; "$@" >/dev/null 2>&1 || got=$?; [ "$got" = "$want" ] || fail "'$*' exited $got, not $want"; }
 cloud() { SDD_PROFILE=cloud "$KIT/bin/jsdd" "$@"; }
+# jq.exe prints CRLF on Windows; values read with jq -r must compare equal.
+case $OSTYPE in msys*|cygwin*) jq() { command jq "$@" | tr -d '\r'; } ;; esac
 
 step "profiles: cloud fills in what nobody set; an explicit setting wins; an unknown one fails"
 out=$(cloud profile)
@@ -124,6 +126,7 @@ echo '{"type":"result","total_cost_usd":1.25,"num_turns":12,"is_error":false,"se
 STUB
 printf '#!/usr/bin/env bash\ncase "$1 $2" in "auth status") exit 0 ;; esac\nexit 0\n' >"$TMP/bin/gh"
 chmod +x "$TMP/bin/claude" "$TMP/bin/gh"
+PATH=$TMP/bin:$PATH   # lib.sh adds it only outside Windows; the stubs need it everywhere
 export KIT STUB_ARGS="$TMP/claude.args" CLAUDE_CODE_OAUTH_TOKEN=test-token
 run() { SDD_PROFILE=cloud "$KIT/bin/jsdd" auto run "$@" -- --permission-mode bypassPermissions; }
 
