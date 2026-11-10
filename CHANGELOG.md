@@ -2,6 +2,26 @@
 
 ## Unreleased
 
+- Cloud-native runs (roadmap idea 13): the kit can be driven by scripts, cron, CI, or a container with nobody watching. See [docs/machine-output.md](docs/machine-output.md).
+- New `jsdd auto run [<ID> | --loop] [--worktree] [-- <claude flags>]`: the headless runner. It checks what an unattended run needs, picks the next spec (or takes the one given), runs `/jsdd:auto` with `claude -p`, and afterwards, however the session ended, records the result, commits it, and pushes the run branch (never `--force`). It exits with the outcome: 0 done, 4 parked, 5 budget spent, 1 failed, 3 nothing to do. It never picks a permission mode: pass one after `--`.
+- New profiles: `SDD_PROFILE=cloud` fills in what an unattended run needs, but only where nobody set a value: autopilot, JSON output, remote claims, and the unattended doctor checks. An env var wins, then the profile, then `specs/jsdd.yml`. A profile never widens the modes a project allows. `jsdd profile [--explain]` shows each setting and where it came from.
+- `--json` on `next`, `status`, `mode`, `charter`, `profile`, `auto queue`, `auto dry-run`, `auto doctor`, `auto run`, `run status`, and `run result`, or `JSDD_OUTPUT=json` for those commands only. Each prints one document with a versioned schema (`jsdd.<command>/1`), also on failure. Commands that skills, hooks, or GitHub read as text (`pr`, `gate`, `budget`, `run next`) never change.
+- Exit codes are now the same for every command: 0 ok, 1 failed, 2 usage or setup (was 1), 3 nothing to do, 4 parked, 5 budget spent, 6 lost a claim race, 7 remote unreachable. Scripts that only test for non-zero are unaffected.
+- New `run-result.json` beside `run-report.md`: how a run ended (`done`, `merged`, `parked`, `budget`, `failed`, `noop`), the gate, the branch, tasks, commits, assumed decisions, and the session's cost. jsdd writes it from disk with `jsdd run result <ID> --write`, which `/jsdd:auto` runs before its last commit; `jsdd run end` writes it if it is missing, and takes `--outcome`. Loops add `specs/runs/<date>-<n>.json` (`jsdd run result --loop --write`).
+- In autopilot mode, `jsdd auto queue` lists what `/jsdd:auto <ID>` accepts: feature specs with no open questions, not parked, with their dependencies done and no open run branch. Each left-out spec has a reason code.
+- `JSDD_EVENTS=<file>` appends one JSON line for each state change: runs, loop steps, claims, ticked tasks, frozen checks, and parking.
+- A new PreToolUse hook blocks AskUserQuestion while the session has a run open, and tells it to park instead. Outside a run nothing changes.
+- `jsdd auto doctor --unattended` (implied by the cloud profile) adds checks as FIX:
+  - Claude Code is installed, and Claude credentials are set
+  - `JSDD_SESSION_ID` is set
+  - jq is installed
+  - a git identity is set
+  - claims are remote, and a probe can push and delete a ref under `refs/sdd-claims/`
+  - `gh` works
+  It now exits 2 when something needs fixing.
+- `claims: remote` (or `local`) in `specs/jsdd.yml` sets the claim mode for every clone. `SDD_CLAIMS` and `git config jsdd.claims` still win.
+- The claim owner is `$JSDD_SESSION_ID` when it is set, ahead of `$CLAUDE_CODE_SESSION_ID`. `jsdd auto run` sets it, and passes the same UUID to `claude --session-id`.
+
 ## 0.7.10 (2026-11-10)
 
 - New `autonomous` mode (roadmap idea 12, M1 and M2): with a charter the team commits, `/jsdd:auto` works through the queue without asking anyone. It takes spec after spec, each on its own branch and each ending in a pull request, until the queue is empty or a budget runs out. The charter is the `autonomous:` section of `specs/jsdd.yml`: a `preset` (`cautious`, the default; `standard`; `hands-off`), a `product` class (how far the `sdd-product` agent may decide), the scope (`types`, `phases`, `exclude_groups`), and budgets (new `specs_per_run`, default 3). A gate set in the section wins over the preset. Like autopilot, the mode needs consent: the project lists it under `modes`, and each person picks it with `SDD_MODE=autonomous`.
