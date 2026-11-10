@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Runtime modes: with no specs/jsdd.yml every gate asks; SDD_MODE picks a mode
-# only when the project allows it and this version has it; a mode that needs
+# only when the project allows it; a mode that needs
 # consent is never a project default; a bad file falls back to manual and
 # fails --check; the board says so; every gate a skill names is in the catalog.
 . "$(dirname "$0")/lib.sh"
@@ -24,7 +24,7 @@ expect "Mode warning:" env SDD_MODE=autonomous "$KIT/bin/jsdd" status
 refuses env SDD_MODE=autonomous "$KIT/bin/jsdd" mode --check
 expect "is not a mode" env SDD_MODE=bogus "$KIT/bin/jsdd" mode
 
-step "the project allows autonomous, which this version does not have yet: still manual"
+step "the project allows autonomous: the default stays manual, SDD_MODE picks it"
 cat >specs/jsdd.yml <<'EOF'
 # Runtime modes for this project.
 version: 1
@@ -37,17 +37,16 @@ autonomous:
 EOF
 jsdd mode --check >/dev/null || fail "--check refused a valid specs/jsdd.yml"
 expect "mode: manual (specs/jsdd.yml default)" jsdd mode
-expect "not available yet" env SDD_MODE=autonomous "$KIT/bin/jsdd" mode
-[ "$(SDD_MODE=autonomous jsdd gate verify.gap_option)" = ask ] || fail "an unavailable mode changed a gate"
+[ "$(jsdd gate verify.gap_option)" = ask ] || fail "the project's autonomous section changed a gate in manual mode"
 
-step "with the mode previewed, overrides and the catalog decide each gate, and the board is loud"
-preview() { SDD_PREVIEW_MODES=1 SDD_MODE=autonomous "$KIT/bin/jsdd" "$@"; }
+step "in autonomous mode, overrides and the catalog decide each gate, and the board is loud"
+preview() { SDD_MODE=autonomous "$KIT/bin/jsdd" "$@"; }
 expect "mode: autonomous (SDD_MODE)" preview mode
 [ "$(preview gate verify.gap_option)" = park ] || fail "the project override was not used"
 [ "$(preview gate plan.approve)" = auto ] || fail "the catalog policy was not used"
 [ "$(preview gate task.manual_check)" = park ] || fail "a manual check does not park"
 expect "[set in specs/jsdd.yml]" preview mode --explain
-expect "MODE: autonomous (from SDD_MODE)" preview status
+expect "MODE: autonomous, preset cautious, product cited (from SDD_MODE)" preview status
 preview status --write >/dev/null
 has "$(cat specs/STATUS.md)" "MODE" && fail "the per-person mode was written to specs/STATUS.md"
 

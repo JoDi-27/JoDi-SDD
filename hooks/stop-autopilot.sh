@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Stop: while this session runs /jsdd:auto on a spec with work, budget, and progress left, block stopping so the run goes on.
+# Stop: while this session runs /jsdd:auto (one spec, or an autonomous loop) with work, budget, and progress left, block stopping so the run goes on.
 . "$(dirname "$0")/_lib.sh"   # reads the hook input
 sid=$(json '.session_id // empty')
 [ -n "$sid" ] || exit 0
