@@ -27,12 +27,53 @@ else
   GIT_COMMON=""; LOCAL_CLAIMS="$SPECS_DIR/.claims"
 fi
 gitcfg() { [ -z "$GIT_COMMON" ] || git -C "$ROOT" config --get "$1" 2>/dev/null || true; }
-CLAIMS_MODE="${SDD_CLAIMS:-$(gitcfg jsdd.claims)}"; CLAIMS_MODE="${CLAIMS_MODE:-local}"
+
+# Profiles: a named, built-in set of settings for an environment, picked with
+# $SDD_PROFILE (never in specs/jsdd.yml, so a clone that pulls is unchanged).
+# A profile only fills in settings nobody set explicitly: an env var always
+# wins, then the profile, then specs/jsdd.yml, then the built-in default. It
+# never widens what the project allows: the mode it picks still needs modes:.
+#   local  today's behavior (the default)
+#   cloud  an unattended run: autopilot, JSON for scripts, remote claims,
+#          and auto doctor's unattended checks as FIX
+PROFILES='local  -
+cloud  SDD_MODE=autopilot SDD_CLAIMS=remote JSDD_OUTPUT=json JSDD_UNATTENDED=1'
+PROFILE="${SDD_PROFILE:-local}"
+PROFILE_SET=" "   # the variables the profile filled in
+profile_row() { printf '%s\n' "$PROFILES" | awk -v p="$1" '$1 == p'; }
+if [ -z "$(profile_row "$PROFILE")" ]; then
+  echo "unknown profile '$PROFILE' in SDD_PROFILE (profiles: $(printf '%s\n' "$PROFILES" | awk '{ printf "%s%s", (NR > 1 ? ", " : ""), $1 }'))" >&2
+  exit 2
+fi
+for _kv in $(profile_row "$PROFILE" | cut -d' ' -f2- | tr -s ' ' '\n' | grep '=' || true); do
+  _k=${_kv%%=*}
+  eval "_cur=\${$_k:-}"
+  # shellcheck disable=SC2154  # set by the eval above
+  if [ -z "$_cur" ]; then eval "$_k=\${_kv#*=}"; PROFILE_SET="$PROFILE_SET$_k "; fi
+done
+unset _kv _k _cur
+
+# jsdd_yml_top <key>: a top-level scalar in specs/jsdd.yml, read before the
+# config parser (the claims mode is needed by everything).
+jsdd_yml_top() {
+  [ -f "$SPECS_DIR/jsdd.yml" ] || return 0
+  awk -v k="$1" '{ sub(/\r$/, ""); sub(/[ \t]+#.*$/, "") } index($0, k ":") == 1 { v = substr($0, length(k) + 2); gsub(/^[ \t"'\'']+|[ \t"'\'']+$/, "", v); print v; exit }' "$SPECS_DIR/jsdd.yml"
+}
+CLAIMS_MODE="${SDD_CLAIMS:-$(gitcfg jsdd.claims)}"; CLAIMS_MODE="${CLAIMS_MODE:-$(jsdd_yml_top claims)}"
+case $CLAIMS_MODE in remote) ;; *) CLAIMS_MODE=local ;; esac
+if [ -n "${SDD_CLAIMS:-}" ]; then
+  CLAIMS_SOURCE=SDD_CLAIMS; case $PROFILE_SET in *" SDD_CLAIMS "*) CLAIMS_SOURCE="profile $PROFILE" ;; esac
+elif [ -n "$(gitcfg jsdd.claims)" ]; then CLAIMS_SOURCE="git config jsdd.claims"
+elif [ -n "$(jsdd_yml_top claims)" ]; then CLAIMS_SOURCE="specs/jsdd.yml"
+else CLAIMS_SOURCE="built-in default"
+fi
 CLAIMS_REMOTE="$(gitcfg jsdd.claimsRemote)"; CLAIMS_REMOTE="${CLAIMS_REMOTE:-origin}"
 MAIN_BRANCH="${SDD_MAIN_BRANCH:-main}"
 CLAIMS="$LOCAL_CLAIMS"
 [ "$CLAIMS_MODE" != remote ] || [ -z "$GIT_COMMON" ] || CLAIMS="$GIT_COMMON/sdd-claims-remote"
-ME="${CLAUDE_CODE_SESSION_ID:-${USER:-${USERNAME:-unknown}}@$(hostname -s 2>/dev/null || hostname)}"
+# The owner of claims and runs: $JSDD_SESSION_ID (set by jsdd auto run, so the
+# runner and the session it starts are one owner), else Claude Code's session.
+ME="${JSDD_SESSION_ID:-${CLAUDE_CODE_SESSION_ID:-${USER:-${USERNAME:-unknown}}@$(hostname -s 2>/dev/null || hostname)}}"
 STALE_HOURS="${SDD_STALE_HOURS:-8}"
 FETCH_REUSE="${SDD_CLAIMS_REUSE:-30}"       # seconds a fetch of remote claims is reused by reads
 REMOTE_TIMEOUT="${SDD_CLAIMS_TIMEOUT:-15}"  # seconds before a fetch or push is given up
@@ -78,8 +119,10 @@ Usage: jsdd <command>
                                 when there is a problem
 
   mode [--check | --explain]    The runtime mode and where it came from; --check
-                                validates specs/jsdd.yml (exit 1 on any problem);
+                                validates specs/jsdd.yml (exit 2 on any problem);
                                 --explain lists every gate and its policy
+  profile [--explain]           The profile (\$SDD_PROFILE: local, or cloud for unattended
+                                runs) and each setting it fills in, with where it came from
   gate <gate>                   Print a gate's policy in the current mode: ask, auto, or park
   budget <name>                 Print a run budget in the current mode (attempts_per_task,
                                 wall_time_hours, specs_per_run)
@@ -92,23 +135,40 @@ Usage: jsdd <command>
   run start|end|status --loop   Mark an autonomous loop (/jsdd:auto with no ID) for this session
   run next                      In a loop: start the run on the next spec in the queue, print its ID
   run active | stop-check       The specs this session runs; whether it may stop now
+  run result <ID> [--write]     The latest run's result (run-result.json); --write records it
+                                from what is on disk (the skill does, before its last commit)
+  run result --loop --write     Record the loop's result next to its report
   charter [get <key>]           The autonomous charter's effective values (preset, product class,
                                 scope, budgets, key gates), or one of them
   auto queue                    The specs an autonomous loop would take now, in order
   auto dry-run                  What a loop would take, where each spec may park, what it leaves out
-  auto doctor                   Check what an unattended run needs: settings, git, gh, permission mode
+  auto doctor [--unattended]    Check what an unattended run needs: settings, git, gh, permission mode;
+                                --unattended (or the cloud profile) adds credentials, the session
+                                ID, git identity, and remote claims, as FIX
+  auto run [<ID> | --loop] [--worktree] [-- <claude flags>]
+                                Run /jsdd:auto headless with claude -p (for cron, CI, a container):
+                                check, pick, run, then record the result, commit, and push the
+                                branch however the session ended. Exits with the outcome
   freeze <ID> [--accept <Tn>...]
                                 Record each task's check in checks.lock; done then refuses a
                                 task whose check changed. --accept needs a Deviation naming it
   pr <ID> [--title]             Print a pull request body (or title) from the spec, evidence,
                                 deviations, and run report
 
+Scripts: --json on next, status, mode, charter, profile, auto queue|dry-run|doctor|run,
+and run status|result prints one JSON document, also on failure; JSDD_OUTPUT=json does
+the same for those commands only. Exit codes: 0 ok, 1 failed, 2 usage or setup,
+3 nothing to do, 4 parked, 5 budget spent, 6 lost a claim race, 7 remote unreachable.
+JSDD_EVENTS=<file> appends a JSON line per state change. See docs/machine-output.md.
+
 Claims stop parallel sessions from picking the same work. They live in the git
 common dir, so every worktree on this machine shares them, and are never committed.
-The owner is \$CLAUDE_CODE_SESSION_ID, or user@host outside Claude Code.
+The owner is \$JSDD_SESSION_ID (set by auto run), else \$CLAUDE_CODE_SESSION_ID,
+else user@host outside Claude Code.
 Claims older than \$SDD_STALE_HOURS (default 8) are shown as stale.
 
-To share claims with other people's clones: git config jsdd.claims remote. Each
+To share claims with other people's clones: git config jsdd.claims remote (or
+claims: remote in specs/jsdd.yml, for every clone). Each
 claim is then a ref under refs/sdd-claims/ on the remote jsdd.claimsRemote (default
 origin), taken with a push the remote accepts only once. A claim fails when the
 remote is unreachable; reads fall back to the last fetch. SDD_CLAIMS=local works
@@ -151,21 +211,21 @@ next_id() {
 }
 
 norm_id() {
-  case $1 in ""|*[!0-9]*) echo "invalid spec ID '$1'" >&2; exit 1 ;; esac
+  case $1 in ""|*[!0-9]*) echo "invalid spec ID '$1'" >&2; exit 2 ;; esac
   printf '%03d' $((10#$1))
 }
 
 norm_task() {
   local t
   t=$(printf '%s' "$1" | tr -d 'Tt')
-  case $t in ""|*[!0-9]*) echo "invalid task ID '$1'" >&2; exit 1 ;; esac
+  case $t in ""|*[!0-9]*) echo "invalid task ID '$1'" >&2; exit 2 ;; esac
   printf 'T%d' $((10#$t))
 }
 
 norm_ac() {
   local a
   a=$(printf '%s' "$1" | tr -d 'ACac-')
-  case $a in ""|*[!0-9]*) echo "invalid acceptance criterion '$1'" >&2; exit 1 ;; esac
+  case $a in ""|*[!0-9]*) echo "invalid acceptance criterion '$1'" >&2; exit 2 ;; esac
   printf 'AC-%d' $((10#$a))
 }
 
@@ -348,7 +408,7 @@ claims_sync() {
   [ -f "$CLAIMS_STAMP" ] && last=$(awk '$3 == "ok" { print $1 }' "$CLAIMS_STAMP")
   if [ "${1:-}" != write ] && [ $((now - ${last:-0})) -lt "$FETCH_REUSE" ]; then return 0; fi
   if ! git -C "$ROOT" remote get-url "$CLAIMS_REMOTE" >/dev/null 2>&1; then
-    echo "remote claims: no git remote '$CLAIMS_REMOTE' (set it with: git config jsdd.claimsRemote <name>)" >&2; exit 1
+    echo "remote claims: no git remote '$CLAIMS_REMOTE' (set it with: git config jsdd.claimsRemote <name>)" >&2; exit 2
   fi
   claims_spec="+refs/sdd-claims/*:refs/sdd-claims-remote/*"
   # One round trip; without a main branch on the remote, fetch only the claims.
@@ -362,7 +422,7 @@ claims_sync() {
   if [ "${1:-}" = write ]; then
     printf 'cannot reach the claims remote %s, so nothing was claimed or changed:\n%s\n' "$CLAIMS_REMOTE" "$REMOTE_ERR" >&2
     echo "To work offline, SDD_CLAIMS=local jsdd ... takes a claim on this machine only; other clones do not see it." >&2
-    exit 1
+    exit 7
   fi
   [ -f "$CLAIMS_STAMP" ] && sed 's/ ok$/ offline/' "$CLAIMS_STAMP" > "$CLAIMS_STAMP.$$" && mv "$CLAIMS_STAMP.$$" "$CLAIMS_STAMP"
   return 0
@@ -433,7 +493,7 @@ claim_take() {
   local err=$REMOTE_ERR
   claims_sync write
   [ -d "$CLAIMS/$1" ] && return 1   # another clone took it first
-  printf 'remote claims: the push to %s failed:\n%s\n' "$CLAIMS_REMOTE" "$err" >&2; exit 1
+  printf 'remote claims: the push to %s failed:\n%s\n' "$CLAIMS_REMOTE" "$err" >&2; exit 7
 }
 
 # claim_mark_done <claim>: a finished task; records the branch its code is on.
@@ -579,8 +639,9 @@ claim_spec() {
     printf '%s has tasks claimed by other sessions:\n%s\n' "$id" "$busy" >&2; exit 1
   fi
   if ! claim_take "$id"; then
-    echo "$id is claimed $(claim_desc "$id")" >&2; exit 1
+    echo "$id is claimed $(claim_desc "$id")" >&2; exit 6
   fi
+  event claim "spec=$id"
   echo "claimed $id"
 }
 
@@ -588,7 +649,7 @@ claim_task() {
   local id=$1 f="$2/tasks.md" t row ticked state
   [ -f "$f" ] || { echo "$id has no tasks.md" >&2; exit 1; }
   if [ -d "$CLAIMS/$id" ] && ! mine "$id"; then
-    echo "$id is claimed $(claim_desc "$id")" >&2; exit 1
+    echo "$id is claimed $(claim_desc "$id")" >&2; exit 6
   fi
   if [ "$3" = next ]; then
     # Resume a task this session already holds.
@@ -596,7 +657,7 @@ claim_task() {
     if [ -n "$t" ]; then echo "$t"; echo "($id $t is already claimed by you)" >&2; return; fi
     # If another session takes the pick first, mkdir fails and the next pick skips it.
     while t=$(pick_task "$id" "$f") && [ -n "$t" ]; do
-      if claim_take "$id-$t"; then echo "$t"; note_unmerged "$id" "$f" "$t"; return; fi
+      if claim_take "$id-$t"; then event claim "spec=$id" "task=$t"; echo "$t"; note_unmerged "$id" "$f" "$t"; return; fi
     done
     if [ "$(task_note "$id" "$f")" = "all tasks done" ]; then
       echo "every task of $id is ticked or done; next: /jsdd:verify $id" >&2; exit 1
@@ -621,27 +682,89 @@ EOF
   case $state in
     mine) echo "$t"; echo "($id $t is already claimed by you)" >&2; return ;;
     done) echo "$id $t is already done (claim marked done)" >&2; exit 1 ;;
-    other) echo "$id $t is claimed $(claim_desc "$id-$t")" >&2; exit 1 ;;
+    other) echo "$id $t is claimed $(claim_desc "$id-$t")" >&2; exit 6 ;;
   esac
   if [ "$gate" != - ]; then
     echo "$id $t waits on $(gate_list "$gate"); claim it with \`claim $id next\` once they are finished" >&2; exit 1
   fi
-  claim_take "$id-$t" || { echo "$id $t is claimed $(claim_desc "$id-$t")" >&2; exit 1; }
+  claim_take "$id-$t" || { echo "$id $t is claimed $(claim_desc "$id-$t")" >&2; exit 6; }
+  event claim "spec=$id" "task=$t"
   echo "$t"
   note_unmerged "$id" "$f" "$t"
+}
+
+# --- machine-readable output -------------------------------------------------
+# Commands meant for scripts print JSON with --json, or when $JSDD_OUTPUT=json
+# (the cloud profile). The command prints only its data; json_wrap adds the
+# envelope, so every JSON command prints exactly one document on stdout, also
+# when it fails: { schema, jsdd, ok, exit, data, warnings, errors }. stderr
+# becomes warnings (on success) or the error message. jq builds every document.
+# Schemas, exit codes, and events: docs/machine-output.md.
+
+JSON=""   # set by the dispatcher
+
+need_jq() { command -v jq >/dev/null 2>&1 || { echo "JSON output needs jq: https://jqlang.github.io/jq/" >&2; exit 2; }; }
+jsdd_version() { sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$PLUGIN_DIR/.claude-plugin/plugin.json" 2>/dev/null | head -1; }
+
+# Exit codes, the same with text or JSON output.
+exit_name() {
+  case $1 in
+    0) echo ok ;; 2) echo usage ;; 3) echo nothing_to_do ;; 4) echo parked ;;
+    5) echo budget_spent ;; 6) echo claim_lost ;; 7) echo remote_unreachable ;; *) echo failed ;;
+  esac
+}
+
+# tsv_json <field...>: tab-separated lines on stdin as a JSON array of objects,
+# one key per field; a "-" or missing field becomes null.
+tsv_json() {
+  jq -R -s -c --args '$ARGS.positional as $n | split("\n") | map(select(length > 0) | split("\t") | . as $f
+    | reduce range(0; $n | length) as $i ({}; .[$n[$i]] = (if ($f[$i] // "-") == "-" then null else $f[$i] end)))' "$@"
+}
+# list_json <[a, b]>: an inline list as a JSON array of strings.
+list_json() { { list_items "$1" 2>/dev/null || true; } | jq -R . | jq -s -c .; }
+# strs_json <words...>: the words as a JSON array.
+strs_json() { jq -n -c '$ARGS.positional' --args "$@"; }
+
+# json_wrap <schema> <command...>: run the command, which prints its data as
+# JSON, and print the envelope. Returns the command's exit code.
+json_wrap() {
+  local schema=$1 out err rc=0 data
+  shift
+  err=$(mktemp "${TMPDIR:-/tmp}/jsdd.XXXXXX")
+  out=$("$@" 2>"$err") || rc=$?
+  data=$(printf '%s' "$out" | jq -c -s 'if length == 1 then .[0] else null end' 2>/dev/null) || data=null
+  [ -n "$data" ] || data=null
+  jq -n --arg schema "$schema" --arg v "$(jsdd_version)" --argjson data "$data" --argjson rc "$rc" \
+    --arg code "$(exit_name "$rc")" --arg err "$(tr -d '\r' <"$err")" '
+    ($err | split("\n") | map(select(length > 0))) as $lines
+    | { schema: $schema, jsdd: $v, ok: ($rc == 0), exit: $rc, data: $data,
+        warnings: (if $rc == 0 then $lines else [] end),
+        errors: (if $rc == 0 then [] else [{ code: $code, message: (if ($lines | length) > 0 then $lines | join("\n") else "exit \($rc): \($code)" end) }] end) }'
+  rm -f "$err"
+  return "$rc"
+}
+
+# event <name> [key=value...]: with $JSDD_EVENTS set, append one JSON line to
+# that file for a state change. Never fails the command it is part of.
+event() {
+  [ -n "${JSDD_EVENTS:-}" ] && command -v jq >/dev/null 2>&1 || return 0
+  local name=$1; shift
+  jq -n -c --arg ts "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" --arg s "$ME" --arg e "$name" '
+    ($ARGS.positional | map(index("=") as $i | { (.[:$i]): .[$i + 1:] }) | add // {}) as $kv
+    | { ts: $ts, session: $s, event: $e } + $kv' --args "$@" >>"$JSDD_EVENTS" 2>/dev/null || true
 }
 
 # --- commands --------------------------------------------------------------
 
 cmd_new() {
-  [ $# -ge 2 ] || { usage >&2; exit 1; }
+  [ $# -ge 2 ] || { usage >&2; exit 2; }
   local type=$1; shift
   local title="$*" tpl id slug dir today esc yesc
   case $type in
     feature) tpl=spec.md ;;
     spike) tpl=spike.md ;;
     baseline) tpl=baseline.md ;;
-    *) echo "unknown type '$type' (use feature, spike, or baseline)" >&2; exit 1 ;;
+    *) echo "unknown type '$type' (use feature, spike, or baseline)" >&2; exit 2 ;;
   esac
   # Reserve the ID, so sessions in other worktrees do not take it too.
   id=$(next_id)
@@ -685,17 +808,21 @@ board() {
     }' | sed -e '$ s/,$//'
 }
 
-# next: specs that are not finished and whose dependencies are all done.
-next_up() {
+# next_rows: what "next" shows, one tab-separated line each: kind, id, type,
+# status, title, then for "ready" the command to run, for "parked" the gate and
+# reason, for "waiting" the specs it waits on (comma-separated), for "blocked"
+# why. Kinds come in that order; within "ready", in the order to work on them.
+next_rows() {
   records | sort | awk -F '\t' '
     { id[NR] = $1; st[$1] = $3; deps[$1] = $5; title[$1] = $9; open[$1] = $8; type[$1] = $2; sclaim[$1] = $11; tnote[$1] = $12; parked[$1] = $13 }
+    function row(kind, k, more) { t = title[k]; gsub(/\t/, " ", t); printf "%s\t%s\t%s\t%s\t%s\t%s\n", kind, k, type[k], st[k], t, more }
     END {
       rank["in-progress"] = 1; rank["planned"] = 2; rank["approved"] = 3; rank["draft"] = 4
       for (r = 1; r <= 4; r++) for (i = 1; i <= NR; i++) {
         k = id[i]; if (rank[st[k]] != r) continue
         waiting = ""
-        if (deps[k] != "-") { m = split(deps[k], d, ","); for (j = 1; j <= m; j++) if (st[d[j]] != "done") waiting = waiting " " d[j] }
-        if (waiting != "") { blockedby[k] = waiting; continue }
+        if (deps[k] != "-") { m = split(deps[k], d, ","); for (j = 1; j <= m; j++) if (st[d[j]] != "done") waiting = waiting "," d[j] }
+        if (waiting != "") { blockedby[k] = substr(waiting, 2); continue }
         if (parked[k] != "-") continue
         if (sclaim[k] != "-") {
           hint = "claimed " sclaim[k]
@@ -710,37 +837,59 @@ next_up() {
         else if (open[k] > 0) hint = "/jsdd:specify " k "   (" open[k] " open questions)"
         else if (st[k] == "approved") hint = "/jsdd:plan " k
         else hint = "review spec, then /jsdd:plan " k
-        printf "  %-4s %-11s %-60s %s\n", k, st[k], substr(title[k], 1, 60), hint; shown++
+        row("ready", k, hint)
       }
-      if (!shown) print "  (nothing actionable; create a spec with /jsdd:specify)"
-      for (i = 1; i <= NR; i++) if (parked[id[i]] != "-" && st[id[i]] != "done" && st[id[i]] != "dropped") {
-        if (!waitshown++) print "Waiting for you:"
-        printf "  %-4s parked at %s; settle it, then: jsdd unpark %s\n", id[i], parked[id[i]], id[i]
-      }
+      for (i = 1; i <= NR; i++) if (parked[id[i]] != "-" && st[id[i]] != "done" && st[id[i]] != "dropped") row("parked", id[i], parked[id[i]])
       for (i = 1; i <= NR; i++) {
         k = id[i]
-        if (k in blockedby) printf "  %-4s waiting on%s\n", k, blockedby[k]
-        else if (st[k] == "blocked" && tnote[k] == "verify declined") printf "  %-4s blocked: verification declined; resume with /jsdd:plan %s\n", k, k
-        else if (st[k] == "blocked") printf "  %-4s blocked (see spec)\n", k
+        if (k in blockedby) row("waiting", k, blockedby[k])
+        else if (st[k] == "blocked" && tnote[k] == "verify declined") row("blocked", k, "verification declined; resume with /jsdd:plan " k)
+        else if (st[k] == "blocked") row("blocked", k, "see spec")
       }
     }'
 }
 
+# next: specs that are not finished and whose dependencies are all done.
+next_up() {
+  next_rows | awk -F '\t' '
+    $1 == "ready" { printf "  %-4s %-11s %-60s %s\n", $2, $4, substr($5, 1, 60), $6; shown++; next }
+    !done_ready { done_ready = 1; if (!shown) print "  (nothing actionable; create a spec with /jsdd:specify)" }
+    $1 == "parked" { if (!waitshown++) print "Waiting for you:"; printf "  %-4s parked at %s; settle it, then: jsdd unpark %s\n", $2, $6, $2 }
+    $1 == "waiting" { w = $6; gsub(/,/, " ", w); printf "  %-4s waiting on %s\n", $2, w }
+    $1 == "blocked" { printf "  %-4s blocked%s\n", $2, ($6 == "see spec" ? " (see spec)" : ": " $6) }
+    END { if (!done_ready && !shown) print "  (nothing actionable; create a spec with /jsdd:specify)" }'
+}
+
+# next_json: next's rows as { ready, parked, waiting, blocked }.
+next_json() {
+  next_rows | jq -R -s -c '
+    split("\n") | map(select(length > 0) | split("\t")) as $r
+    | def base: { id: .[1], type: .[2], status: .[3], title: .[4] };
+      { ready:   [$r[] | select(.[0] == "ready")   | base + { next: .[5] }],
+        parked:  [$r[] | select(.[0] == "parked")  | base + { gate: (.[5] | split(": ")[0]), reason: (.[5] | split(": ")[1:] | join(": ")) }],
+        waiting: [$r[] | select(.[0] == "waiting") | base + { waiting_on: (.[5] | split(",")) }],
+        blocked: [$r[] | select(.[0] == "blocked") | base + { reason: .[5] }] }'
+}
+
+cmd_next() {
+  if [ -n "$JSON" ]; then next_json; else next_up; fi
+}
+
 cmd_claim() {
-  [ $# -ge 1 ] || { usage >&2; exit 1; }
+  [ $# -ge 1 ] || { usage >&2; exit 2; }
   local id dir
   id=$(norm_id "$1"); dir=$(spec_dir "$id")
   if [ $# -eq 1 ]; then claim_spec "$id"; else claim_task "$id" "$dir" "$2"; fi
 }
 
 cmd_release() {
-  [ $# -ge 1 ] || { usage >&2; exit 1; }
+  [ $# -ge 1 ] || { usage >&2; exit 2; }
   local id name a t="" force=0
   id=$(norm_id "$1"); shift
   for a in "$@"; do
     case $a in
       --force) force=1 ;;
-      -*) echo "unknown option '$a' (task claims are marked done by: jsdd done <ID> <Tn>)" >&2; exit 1 ;;
+      -*) echo "unknown option '$a' (task claims are marked done by: jsdd done <ID> <Tn>)" >&2; exit 2 ;;
       *) t=$(norm_task "$a") ;;
     esac
   done
@@ -750,6 +899,7 @@ cmd_release() {
     echo "$id $t is claimed $(claim_desc "$name"); use --force if that session is gone" >&2; exit 1
   fi
   claim_drop "$name" || exit 1
+  event release "spec=$id" ${t:+"task=$t"}
   echo "released $id $t"
 }
 
@@ -785,7 +935,7 @@ check_of() {
 # repository root and ticks the task only when the check exits 0. A baseline
 # spec has no tasks: its acceptance criteria in spec.md are ticked the same way.
 cmd_done() {
-  [ $# -ge 2 ] || { usage >&2; exit 1; }
+  [ $# -ge 2 ] || { usage >&2; exit 2; }
   local id dir f t ac="" row tab n line cmd note="" rc tmp crlf frozen
   id=$(norm_id "$1")
   case $2 in [Aa][Cc]*) ac=1; t=$(norm_ac "$2") ;; *) t=$(norm_task "$2") ;; esac
@@ -794,7 +944,7 @@ cmd_done() {
     note="${2:-}"
     [ -n "$note" ] || { echo "--manual needs a note: who checked what" >&2; exit 1; }
   elif [ $# -gt 0 ]; then
-    echo "unknown option '$1'" >&2; exit 1
+    echo "unknown option '$1'" >&2; exit 2
   fi
   dir=$(spec_dir "$id")
   if [ -n "$ac" ]; then
@@ -857,6 +1007,7 @@ cmd_done() {
       if (ENVIRON["NOTE"] != "") $0 = $0 " · checked: " ENVIRON["NOTE"] " (" ENVIRON["DATE"] ")"
     }
     { printf "%s%s\n", $0, (crlf ? "\r" : "") }' "$f" > "$tmp" && mv "$tmp" "$f"
+  event "$([ -n "$ac" ] && echo ac.done || echo task.done)" "spec=$id" "$([ -n "$ac" ] && echo "ac=$t" || echo "task=$t")" "check=$([ -n "$cmd" ] && echo passed || echo manual)"
   if [ -n "$cmd" ]; then echo "check passed; ticked $id $t"; else echo "ticked $id $t (manual check recorded)"; fi
   [ -n "$ac" ] || claim_mark_done "$id-$t" || exit 1
   if [ -z "$ac" ] && [ "$(task_note "$id" "$f")" = "all tasks done" ]; then
@@ -944,7 +1095,7 @@ cmd_claims() {
       [ -z "$held" ] || echo "${held# }"
       return 0 ;;
     "") ;;
-    *) echo "usage: jsdd claims [--prune | --mine]" >&2; exit 1 ;;
+    *) echo "usage: jsdd claims [--prune | --mine]" >&2; exit 2 ;;
   esac
   claims_banner
   local_leftovers
@@ -1030,10 +1181,10 @@ cmd_coverage() {
   local scope="" pri="" missing="" rows
   while [ $# -gt 0 ]; do
     case $1 in
-      --phase) [ $# -ge 2 ] || { usage >&2; exit 1; }; scope="$scope $(phase_scope "$2")"; shift 2 ;;
-      --priority) [ $# -ge 2 ] || { usage >&2; exit 1; }; pri=$2; shift 2 ;;
+      --phase) [ $# -ge 2 ] || { usage >&2; exit 2; }; scope="$scope $(phase_scope "$2")"; shift 2 ;;
+      --priority) [ $# -ge 2 ] || { usage >&2; exit 2; }; pri=$2; shift 2 ;;
       --missing) missing=1; shift ;;
-      -*) echo "unknown option '$1'" >&2; usage >&2; exit 1 ;;
+      -*) echo "unknown option '$1'" >&2; usage >&2; exit 2 ;;
       *) scope="$scope $1"; shift ;;
     esac
   done
@@ -1113,7 +1264,7 @@ cmd_capabilities() {
   while [ $# -gt 0 ]; do
     case $1 in
       --check) check=1; shift ;;
-      -*) echo "unknown option '$1'" >&2; usage >&2; exit 1 ;;
+      -*) echo "unknown option '$1'" >&2; usage >&2; exit 2 ;;
       *) scope="$scope $1"; shift ;;
     esac
   done
@@ -1315,9 +1466,10 @@ config_errors() {
                 done
               fi ;;
             default) default=$v; dline=$n ;;
+            claims) case $v in local|remote) ;; *) echo "$f:$n: claims: '$v' is not one of local, remote" ;; esac ;;
             *)
               if [ -n "$(mode_field "$k" 2)" ]; then echo "$f:$n: '$k' is a section: put its gates on the lines below it"
-              else echo "$f:$n: unknown key '$k' (top-level keys: version, modes, default, and one section per mode)"; fi ;;
+              else echo "$f:$n: unknown key '$k' (top-level keys: version, modes, default, claims, and one section per mode)"; fi ;;
           esac
         elif [ "$k" = preset ] || [ -n "$(scope_row "$k")" ]; then
           if [ "$s" != autonomous ]; then echo "$f:$n: $k belongs in the autonomous section only"
@@ -1367,7 +1519,9 @@ resolve_mode() {
   load_config
   CONFIG_ERRORS=$(config_errors)
   MODE_WARN=""
-  if [ -n "${SDD_MODE:-}" ]; then want=$SDD_MODE; src="SDD_MODE"
+  if [ -n "${SDD_MODE:-}" ]; then
+    want=$SDD_MODE; src="SDD_MODE"
+    case $PROFILE_SET in *" SDD_MODE "*) src="profile $PROFILE" ;; esac
   elif [ -z "$CONFIG_ERRORS" ] && [ -n "$(config_get - default)" ]; then want=$(config_get - default); src="$MODES_REL default"
   else want=manual; src="built-in default"
   fi
@@ -1412,9 +1566,83 @@ assumed_count() {
   section "$f" Assumed | grep -cE '^\| *AS-[0-9]+' || true
 }
 
+# --- profiles ----------------------------------------------------------------
+
+# profile_rows: each setting a profile can change: name, value, where it came from.
+profile_rows() {
+  local o src
+  resolve_mode
+  printf 'mode\t%s\t%s\n' "$MODE" "$MODE_SOURCE"
+  printf 'claims\t%s\t%s\n' "$CLAIMS_MODE" "$CLAIMS_SOURCE"
+  o=${JSDD_OUTPUT:-text}; src=JSDD_OUTPUT
+  case $PROFILE_SET in *" JSDD_OUTPUT "*) src="profile $PROFILE" ;; esac
+  [ -n "${JSDD_OUTPUT:-}" ] || src="built-in default"
+  printf 'output\t%s\t%s\n' "$o" "$src"
+  if [ -n "${JSDD_SESSION_ID:-}" ]; then printf 'owner\t%s\tJSDD_SESSION_ID\n' "$ME"
+  elif [ -n "${CLAUDE_CODE_SESSION_ID:-}" ]; then printf 'owner\t%s\tCLAUDE_CODE_SESSION_ID\n' "$ME"
+  else printf 'owner\t%s\tuser@host\n' "$ME"; fi
+  printf 'events\t%s\t%s\n' "${JSDD_EVENTS:-off}" "$([ -n "${JSDD_EVENTS:-}" ] && echo JSDD_EVENTS || echo "built-in default (jsdd auto run turns them on)")"
+  src=JSDD_UNATTENDED; case $PROFILE_SET in *" JSDD_UNATTENDED "*) src="profile $PROFILE" ;; esac
+  if [ -n "${JSDD_UNATTENDED:-}" ]; then printf 'doctor\tunattended checks are FIX\t%s\n' "$src"
+  else printf 'doctor\tunattended checks off (auto doctor --unattended)\tbuilt-in default\n'; fi
+}
+
+cmd_profile() {
+  case ${1:-} in ""|--explain) ;; *) echo "usage: jsdd profile [--explain]" >&2; exit 2 ;; esac
+  if [ -n "$JSON" ]; then
+    profile_rows | tsv_json setting value source | jq -c --arg p "$PROFILE" --arg src "$([ -n "${SDD_PROFILE:-}" ] && echo SDD_PROFILE || echo "built-in default")" \
+      --argjson all "$(printf '%s\n' "$PROFILES" | awk '{ printf "%s\t", $1; for (i = 2; i <= NF; i++) printf "%s%s", $i, (i < NF ? " " : ""); print "" }' | tsv_json name sets)" '
+      { profile: $p, source: $src, settings: (map({ (.setting): { value, source } }) | add), profiles: ($all | map(.sets |= (if . == null then [] else split(" ") end))) }'
+    return
+  fi
+  echo "profile: $PROFILE ($([ -n "${SDD_PROFILE:-}" ] && echo SDD_PROFILE || echo "built-in default"))"
+  echo
+  printf '%-8s %-40s %s\n' SETTING VALUE "FROM"
+  profile_rows | awk -F '\t' '{ printf "%-8s %-40s %s\n", $1, $2, $3 }'
+  if [ "${1:-}" = --explain ]; then
+    echo
+    echo "Profiles fill in only what nobody set: an env var wins, then the profile, then $MODES_REL, then the default."
+    printf '%s\n' "$PROFILES" | while read -r p sets; do
+      [ "$sets" != - ] || sets="(nothing: today's behavior)"
+      printf '  %-6s %s\n' "$p" "$sets"
+    done
+  fi
+}
+
+# mode_json [--explain]: the mode, where it came from, the config's problems,
+# and with --explain every gate and budget.
+mode_json() {
+  local gates="[]" budgets="[]" g
+  if [ "${1:-}" = --explain ]; then
+    gates=$(for g in $(gate_names); do
+        printf '%s\t%s\t%s\t%s\n' "$g" "$(gate_policy "$g" "$MODE")" \
+          "$(if [ "$MODE" != manual ] && [ -n "$(config_get "$MODE" "$g")" ]; then echo "$MODES_REL"
+             elif [ "$MODE" = autonomous ] && [ -n "$(preset_gate "$(autonomous_preset)" "$g")" ]; then echo "preset $(autonomous_preset)"
+             else echo catalog; fi)" \
+          "$(gate_row "$g" | awk -v c="$(( $(printf '%s\n' "$MODE_TABLE" | wc -l) + 3 ))" '{ for (i = c; i <= NF; i++) printf "%s%s", $i, (i < NF ? " " : "") }')"
+      done | tsv_json gate policy source decides)
+    budgets=$(printf '%s\n' "$BUDGETS" | while read -r g _ _ _ _; do printf '%s\t%s\n' "$g" "$(budget_value "$g")"; done \
+      | tsv_json budget value | jq -c 'map(.value |= tonumber)')
+  fi
+  jq -n -c --arg mode "$MODE" --arg src "$MODE_SOURCE" --arg warn "$MODE_WARN" --arg profile "$PROFILE" \
+    --argjson exists "$([ -f "$MODES_FILE" ] && echo true || echo false)" \
+    --argjson errors "$(printf '%s' "$CONFIG_ERRORS" | jq -R . | jq -s -c 'map(select(length > 0))')" \
+    --argjson allowed "$(for g in $(printf '%s\n' "$MODE_TABLE" | awk '{ print $1 }'); do mode_allowed "$g" && echo "$g"; done | jq -R . | jq -s -c .)" \
+    --argjson gates "$gates" --argjson budgets "$budgets" --argjson explain "$([ "${1:-}" = --explain ] && echo true || echo false)" '
+    { mode: $mode, source: $src, warning: (if $warn == "" then null else $warn end), profile: $profile,
+      config: { file: "specs/jsdd.yml", exists: $exists, valid: ($errors | length == 0), errors: $errors },
+      allowed_modes: $allowed }
+    + (if $explain then { gates: $gates, budgets: $budgets } else {} end)'
+}
+
 cmd_mode() {
   local g p over
   resolve_mode
+  if [ -n "$JSON" ]; then
+    case "${1:-}" in ""|--check|--explain) mode_json "${1:-}" ;; *) echo "usage: jsdd mode [--check | --explain]" >&2; exit 2 ;; esac
+    if [ "${1:-}" = --check ]; then [ -z "$CONFIG_ERRORS" ] || exit 2; [ -z "$MODE_WARN" ] || exit 1; fi
+    return
+  fi
   case "${1:-}" in
     "")
       echo "mode: $MODE ($MODE_SOURCE)"
@@ -1426,7 +1654,8 @@ cmd_mode() {
       fi
       echo "mode: $MODE ($MODE_SOURCE)"
       [ -z "$MODE_WARN" ] || echo "warning: $MODE_WARN"
-      [ -z "$CONFIG_ERRORS" ] && [ -z "$MODE_WARN" ] ;;
+      [ -z "$CONFIG_ERRORS" ] || exit 2
+      [ -z "$MODE_WARN" ] ;;
     --explain)
       echo "mode: $MODE ($MODE_SOURCE)"
       [ -z "$MODE_WARN" ] || echo "warning: $MODE_WARN"
@@ -1455,12 +1684,12 @@ cmd_mode() {
           printf '%-24s %-22s %s\n' "$g" "$(scope_value "$g")" "$p"
         done
       fi ;;
-    *) echo "usage: jsdd mode [--check | --explain]" >&2; exit 1 ;;
+    *) echo "usage: jsdd mode [--check | --explain]" >&2; exit 2 ;;
   esac
 }
 
 cmd_gate() {
-  [ $# -eq 1 ] || { echo "usage: jsdd gate <gate>   (gates: jsdd mode --explain)" >&2; exit 1; }
+  [ $# -eq 1 ] || { echo "usage: jsdd gate <gate>   (gates: jsdd mode --explain)" >&2; exit 2; }
   [ -n "$(gate_row "$1")" ] || { echo "unknown gate '$1' (gates: jsdd mode --explain)" >&2; exit 2; }
   resolve_mode
   gate_policy "$1" "$MODE"
@@ -1498,10 +1727,22 @@ charter_get() {
 cmd_charter() {
   local k g
   resolve_mode
-  [ -z "$CONFIG_ERRORS" ] || { printf '%s\n' "$CONFIG_ERRORS" >&2; echo "the charter is invalid: jsdd mode --check" >&2; exit 1; }
+  [ -z "$CONFIG_ERRORS" ] || { printf '%s\n' "$CONFIG_ERRORS" >&2; echo "the charter is invalid: jsdd mode --check" >&2; exit 2; }
   case ${1:-} in
-    get) [ $# -eq 2 ] || { echo "usage: jsdd charter get <key>" >&2; exit 1; }; charter_get "$2" ;;
+    get) [ $# -eq 2 ] || { echo "usage: jsdd charter get <key>" >&2; exit 2; }; charter_get "$2" ;;
     "")
+      if [ -n "$JSON" ]; then
+        jq -n -c --argjson has "$([ -n "$(printf '%s\n' "$CONFIG" | awk -F '\t' '$1 == "S" && $3 == "autonomous"')" ] && echo true || echo false)" \
+          --argjson allowed "$(mode_allowed autonomous && echo true || echo false)" --arg preset "$(charter_get preset)" --arg product "$(charter_get product)" \
+          --argjson types "$(list_json "$(charter_get types)")" --arg phases "$(charter_get phases)" \
+          --argjson groups "$(list_json "$(charter_get exclude_groups)")" \
+          --argjson budgets "$(printf '%s\n' "$BUDGETS" | while read -r k _; do printf '%s\t%s\n' "$k" "$(charter_get "$k")"; done | tsv_json k v | jq -c 'map({ (.k): (.v | tonumber) }) | add')" \
+          --argjson gates "$(for g in spec.clarify spec.change verify.gap_option merge; do printf '%s\t%s\n' "$g" "$(charter_get "$g")"; done | tsv_json k v | jq -c 'map({ (.k): .v }) | add')" '
+          { charter: $has, autonomous_allowed: $allowed, preset: $preset, product: $product, types: $types,
+            phases: (if $phases == "[any]" then null else ($phases | ltrimstr("[") | rtrimstr("]") | split(",") | map(gsub("^ +| +$"; "") | tonumber? // .)) end),
+            exclude_groups: $groups, budgets: $budgets, gates: $gates }'
+        return
+      fi
       if [ -z "$(printf '%s\n' "$CONFIG" | awk -F '\t' '$1 == "S" && $3 == "autonomous"')" ]; then
         echo "no charter: $MODES_REL has no autonomous section, so no autonomous run can start (/jsdd:auto setup writes one)"
         return
@@ -1511,13 +1752,13 @@ cmd_charter() {
       printf '%s\n' "$BUDGETS" | while read -r k _; do printf '%-18s %s\n' "$k" "$(charter_get "$k")"; done
       for g in spec.clarify spec.change verify.gap_option merge; do printf '%-18s %s\n' "$g" "$(charter_get "$g")"; done
       echo "(every gate: SDD_MODE=autonomous jsdd mode --explain)" ;;
-    *) echo "usage: jsdd charter [get <key>]" >&2; exit 1 ;;
+    *) echo "usage: jsdd charter [get <key>]" >&2; exit 2 ;;
   esac
 }
 
 cmd_budget() {
   [ $# -eq 1 ] && [ -n "$(budget_row "$1")" ] \
-    || { echo "usage: jsdd budget <$(printf '%s\n' "$BUDGETS" | awk '{ printf "%s%s", (NR > 1 ? "|" : ""), $1 }')>" >&2; exit 1; }
+    || { echo "usage: jsdd budget <$(printf '%s\n' "$BUDGETS" | awk '{ printf "%s%s", (NR > 1 ? "|" : ""), $1 }')>" >&2; exit 2; }
   resolve_mode
   budget_value "$1"
 }
@@ -1562,25 +1803,27 @@ changelog_add() {
 # "next" skips it until a person settles the question and runs unpark.
 
 cmd_park() {
-  [ $# -ge 3 ] || { echo "usage: jsdd park <ID> <gate> <reason>" >&2; exit 1; }
+  [ $# -ge 3 ] || { echo "usage: jsdd park <ID> <gate> <reason>" >&2; exit 2; }
   local id dir gate reason
   id=$(norm_id "$1"); gate=$2; shift 2; reason="$*"
-  [ -n "$(gate_row "$gate")" ] || { echo "unknown gate '$gate' (gates: jsdd mode --explain)" >&2; exit 1; }
+  [ -n "$(gate_row "$gate")" ] || { echo "unknown gate '$gate' (gates: jsdd mode --explain)" >&2; exit 2; }
   dir=$(spec_dir "$id")
   resolve_mode
   fm_set "$dir/spec.md" parked "$gate: $reason"
   changelog_add "$dir/spec.md" "Parked at gate $gate: $reason$([ "$MODE" = manual ] || echo " (auto: $MODE)")"
+  event park "spec=$id" "gate=$gate" "reason=$reason"
   echo "parked $id at $gate: $reason"
   echo "it waits for a person; once settled: jsdd unpark $id"
 }
 
 cmd_unpark() {
-  [ $# -eq 1 ] || { echo "usage: jsdd unpark <ID>" >&2; exit 1; }
+  [ $# -eq 1 ] || { echo "usage: jsdd unpark <ID>" >&2; exit 2; }
   local id dir
   id=$(norm_id "$1"); dir=$(spec_dir "$id")
   [ -n "$(fm "$dir/spec.md" parked)" ] || { echo "$id is not parked"; return; }
   fm_set "$dir/spec.md" parked
   changelog_add "$dir/spec.md" "Unparked."
+  event unpark "spec=$id"
   echo "unparked $id"
 }
 
@@ -1651,7 +1894,7 @@ cmd_run() {
   local sub=${1:-} id dir r again=0 st parked left CLAIMS="$LOCAL_CLAIMS" CLAIMS_MODE=local
   case $sub in
     start)
-      [ $# -eq 2 ] || { echo "usage: jsdd run start <ID> | --loop" >&2; exit 1; }
+      [ $# -eq 2 ] || { echo "usage: jsdd run start <ID> | --loop" >&2; exit 2; }
       resolve_mode
       if [ "$2" = --loop ]; then
         if [ "$MODE" != autonomous ]; then
@@ -1662,10 +1905,11 @@ cmd_run() {
         r=run-loop
         if [ -d "$CLAIMS/$r" ]; then
           if mine "$r"; then echo "loop already started by you ($(run_hours_left loop)h left)"; return; fi
-          echo "an autonomous loop is held $(claim_desc "$r"); one loop per clone, specs claimed by other runs are skipped" >&2; exit 1
+          echo "an autonomous loop is held $(claim_desc "$r"); one loop per clone, specs claimed by other runs are skipped" >&2; exit 6
         fi
-        claim_take "$r" || { echo "an autonomous loop is held $(claim_desc "$r")" >&2; exit 1; }
+        claim_take "$r" || { echo "an autonomous loop is held $(claim_desc "$r")" >&2; exit 6; }
         printf 'branch=%s\n' "$(cd "$ROOT" && git rev-parse --abbrev-ref HEAD 2>/dev/null || echo -)" >> "$CLAIMS/$r/owner"
+        event loop.start
         echo "loop started: preset $(autonomous_preset), up to $(budget_value specs_per_run) specs in $(budget_value wall_time_hours)h, $(budget_value attempts_per_task) attempts per task"
         echo "take the first spec with: jsdd run next"
         return
@@ -1679,13 +1923,14 @@ cmd_run() {
           exit 1 ;;
       esac
       parked=$(fm "$dir/spec.md" parked)
-      [ -z "$parked" ] || { echo "$id is parked: $parked. Settle it, then: jsdd unpark $id" >&2; exit 1; }
+      [ -z "$parked" ] || { echo "$id is parked: $parked. Settle it, then: jsdd unpark $id" >&2; exit 4; }
       if [ -d "$CLAIMS/$r" ]; then
         if mine "$r"; then echo "run $id already started by you ($(run_hours_left "$id")h left)"; return; fi
-        echo "run $id is held $(claim_desc "$r")" >&2; exit 1
+        echo "run $id is held $(claim_desc "$r")" >&2; exit 6
       fi
-      claim_take "$r" || { echo "run $id is held $(claim_desc "$r")" >&2; exit 1; }
+      claim_take "$r" || { echo "run $id is held $(claim_desc "$r")" >&2; exit 6; }
       printf 'branch=%s\n' "$(cd "$ROOT" && git rev-parse --abbrev-ref HEAD 2>/dev/null || echo -)" >> "$CLAIMS/$r/owner"
+      event run.start "spec=$id" "mode=$MODE"
       echo "run $id started: $(run_hours_left "$id")h, $(budget_value attempts_per_task) attempts per task" ;;
     next)
       # The loop's next spec: prints its ID and starts its run, or says why there is none.
@@ -1694,29 +1939,70 @@ cmd_run() {
       id=$(my_runs | head -1)
       [ -z "$id" ] || { echo "the run on $id is still open: finish it (pull request, run report), then: jsdd run end $id" >&2; exit 1; }
       left=$(loop_left)
-      [ -z "$left" ] || { echo "the loop takes no more specs: $left. Write the loop report and run: jsdd run end --loop" >&2; exit 1; }
+      [ -z "$left" ] || { echo "the loop takes no more specs: $left. Write the loop report and run: jsdd run end --loop" >&2; exit 3; }
       id=$(loop_pick)
       printf 'taken=%s\n' "$id" >> "$CLAIMS/run-loop/owner"
+      event loop.next "spec=$id"
       "$0" run start "$id" >&2
       echo "$id" ;;
     end)
-      [ $# -ge 2 ] || { echo "usage: jsdd run end <ID> | --loop [--force]" >&2; exit 1; }
+      [ $# -ge 2 ] || { echo "usage: jsdd run end <ID> | --loop [--force] [--outcome <outcome>]" >&2; exit 2; }
+      local force="" outcome="" a
       if [ "$2" = --loop ]; then r=run-loop; id=loop; else id=$(norm_id "$2"); r="run-$id"; fi
+      shift 2
+      while [ $# -gt 0 ]; do
+        case $1 in
+          --force) force=1 ;;
+          --outcome) [ $# -ge 2 ] || { echo "--outcome needs a value" >&2; exit 2; }; outcome=$2; shift ;;
+          *) echo "unknown option '$1'" >&2; exit 2 ;;
+        esac; shift
+      done
       [ -d "$CLAIMS/$r" ] || { echo "no run on $id"; return; }
-      if [ "${3:-}" != --force ] && ! mine "$r"; then
+      if [ -z "$force" ] && ! mine "$r"; then
         echo "run $id is held $(claim_desc "$r"); use --force if that session is gone" >&2; exit 1
       fi
+      resolve_mode
       if [ "$r" = run-loop ]; then
+        # The loop's result, unless the skill already wrote it for its last commit.
+        if command -v jq >/dev/null 2>&1 && [ ! -f "$(loop_result_file)" ]; then loop_result_write >/dev/null; fi
         echo "loop ended after $(loop_taken | grep -c . || true) specs: $(loop_taken | paste -sd ' ' -)"
+        event loop.end "taken=$(loop_taken | paste -sd ' ' -)"
         rm -rf "${CLAIMS:?}/$r"
       else
-        rm -rf "${CLAIMS:?}/$r"; echo "run $id ended"
+        # The run's result, unless the skill already wrote it (or --outcome says how it ended).
+        if command -v jq >/dev/null 2>&1 && { [ -n "$outcome" ] || [ -z "$(result_entry "$id")" ]; }; then
+          result_write "$id" ${outcome:+--outcome "$outcome"} >/dev/null
+        fi
+        a=$( ! command -v jq >/dev/null 2>&1 || result_entry "$id" | jq -r '.outcome // empty')
+        if my_loop; then printf 'result=%s:%s:%s\n' "$id" "${a:-unknown}" "$(git -C "$ROOT" rev-parse --abbrev-ref HEAD 2>/dev/null || echo -)" >> "$CLAIMS/run-loop/owner"; fi
+        event run.end "spec=$id" "outcome=${a:-unknown}"
+        rm -rf "${CLAIMS:?}/$r"; echo "run $id ended${a:+: $a}"
       fi ;;
+    result)
+      [ $# -ge 2 ] || { echo "usage: jsdd run result <ID> [--write [--outcome <outcome>] [--claude <file>] [--session-failed]] | --loop --write" >&2; exit 2; }
+      resolve_mode
+      if [ "$2" = --loop ]; then
+        [ "${3:-}" = --write ] || { echo "usage: jsdd run result --loop --write" >&2; exit 2; }
+        my_loop || { echo "no autonomous loop in this session" >&2; exit 1; }
+        loop_result_write; return
+      fi
+      id=$(norm_id "$2"); shift 2
+      if [ "${1:-}" = --write ]; then shift; result_write "$id" "$@"
+      else [ $# -eq 0 ] || { echo "unknown option '$1'" >&2; exit 2; }; result_show "$id"; fi ;;
     status)
-      [ $# -eq 2 ] || { echo "usage: jsdd run status <ID> | --loop" >&2; exit 1; }
+      [ $# -eq 2 ] || { echo "usage: jsdd run status <ID> | --loop" >&2; exit 2; }
       resolve_mode
       if [ "$2" = --loop ]; then
         my_loop || { echo "no autonomous loop in this session" >&2; exit 1; }
+        if [ -n "$JSON" ]; then
+          left=$(loop_left)
+          jq -n -c --argjson taken "$(loop_taken | jq -R . | jq -s -c .)" --argjson max "$(budget_value specs_per_run)" \
+            --argjson hl "$(run_hours_left loop)" --argjson hours "$(budget_value wall_time_hours)" --arg left "$left" \
+            --arg next "$( [ -n "$left" ] || loop_pick)" '
+            { loop: true, taken: $taken, specs_per_run: $max, hours_left: $hl, wall_time_hours: $hours,
+              takes_more: ($left == ""), stops_because: (if $left == "" then null else $left end), next: (if $next == "" then null else $next end) }'
+          return
+        fi
         echo "loop $(claim_desc run-loop): took $(loop_taken | grep -c . || true) of $(budget_value specs_per_run) specs ($(loop_taken | paste -sd ' ' -)); $(run_hours_left loop)h left of $(budget_value wall_time_hours)h"
         left=$(loop_left)
         if [ -n "$left" ]; then echo "takes no more specs: $left"; else echo "next: $(loop_pick)"; fi
@@ -1725,9 +2011,19 @@ cmd_run() {
       id=$(norm_id "$2"); dir=$(spec_dir "$id"); r="run-$id"
       [ -d "$CLAIMS/$r" ] || { echo "no run on $id" >&2; exit 1; }
       st=$(fm "$dir/spec.md" status); parked=$(fm "$dir/spec.md" parked)
+      if [ -n "$JSON" ]; then
+        jq -n -c --arg id "$id" --arg owner "$(claim_get "$r" owner)" --argjson mine "$(mine "$r" && echo true || echo false)" \
+          --arg branch "$(claim_get "$r" branch)" --arg st "$st" --arg parked "$parked" --arg since "$(iso_time "$(claim_get "$r" since)")" \
+          --argjson left "$(run_hours_left "$id")" --argjson hours "$(budget_value wall_time_hours)" --argjson tries "$(budget_value attempts_per_task)" '
+          { spec: $id, owner: $owner, mine: $mine, branch: $branch, status: $st, started: $since,
+            parked: (if $parked == "" then null else { gate: ($parked | split(": ")[0]), reason: ($parked | split(": ")[1:] | join(": ")) } end),
+            hours_left: $left, wall_time_hours: $hours, attempts_per_task: $tries, budget_spent: ($left <= 0) }'
+        [ "$(run_hours_left "$id")" -gt 0 ] || exit 5
+        return
+      fi
       echo "run $id $(claim_desc "$r"), on branch $(claim_get "$r" branch); spec $st${parked:+, parked at $parked}"
       if [ "$(run_hours_left "$id")" -le 0 ]; then
-        echo "wall-time budget spent ($(budget_value wall_time_hours)h): stop, write the run report, and end the run" >&2; exit 1
+        echo "wall-time budget spent ($(budget_value wall_time_hours)h): stop, write the run report, and end the run" >&2; exit 5
       fi
       echo "$(run_hours_left "$id")h left of $(budget_value wall_time_hours)h; $(budget_value attempts_per_task) attempts per task" ;;
     active) my_runs; if my_loop; then echo loop; fi ;;
@@ -1765,7 +2061,7 @@ cmd_run() {
           echo "block: The autonomous loop takes no more specs: $left. Write the loop report (/jsdd:auto, step 6), then run: jsdd run end --loop"
         fi
       fi ;;
-    *) echo "usage: jsdd run <start|next|end|status|active|stop-check> [ID | --loop]" >&2; exit 1 ;;
+    *) echo "usage: jsdd run <start|next|end|status|result|active|stop-check> [ID | --loop]" >&2; exit 2 ;;
   esac
 }
 
@@ -1794,10 +2090,14 @@ open_run_branch() {
 }
 
 # queue_rows: one tab-separated line per live spec, in the order a loop takes them:
-# id, type, status, take|skip, why (for a skip) or the next step (for a take).
+# id, type, status, take|skip, why (for a skip) or the next step (for a take),
+# and for a skip a reason code (docs/machine-output.md). In autopilot mode the
+# queue is what /jsdd:auto <ID> accepts: feature specs a person wrote, with no
+# open questions; the charter's scope applies only in the other modes.
 queue_rows() {
-  local phases types groups r id type st phase deps open tnote parked dir refs ref g why num run_branch
+  local phases types groups r id type st phase deps open tnote parked dir refs ref g why code num run_branch
   phases=$(config_get autonomous phases); types=$(scope_value types); groups=$(config_get autonomous exclude_groups)
+  if [ "${MODE:-}" = autopilot ]; then phases=""; types="[feature]"; groups=""; fi
   records | sort | awk -F '\t' '
     { st[$1] = $3; line[NR] = $0; id[NR] = $1 }
     END {
@@ -1809,27 +2109,31 @@ queue_rows() {
         print line[i] "\t" (waiting == "" ? "-" : substr(waiting, 2))
       }
     }' | while IFS="$(printf '\t')" read -r id type st phase deps _ _ open _ dir _ tnote parked waiting; do
-    num=${dir%%-*}; why=""
+    num=${dir%%-*}; why=""; code=""
     refs=$(fm "$SPECS_DIR/$dir/spec.md" refs | tr -d "[]\"'" | tr ',' ' ')
-    if [ "$st" = blocked ]; then why="blocked: a person resumes it (/jsdd:plan $id)"
-    elif [ "$parked" != - ]; then why="parked at $parked"
-    elif [ "$tnote" = "verify spec change" ]; then why="a spec change from verify waits for a person (/jsdd:specify $id)"
-    elif ! in_list "$type" "$types"; then why="type $type is not in autonomous.types $types"
-    elif [ -n "$phases" ] && ! in_list "$phase" "$phases"; then why="phase $phase is not in autonomous.phases $phases"
-    elif [ "$waiting" != - ]; then why="waiting on $waiting"
-    elif [ -d "$CLAIMS/$num" ] && ! mine "$num"; then why="claimed $(claim_desc "$num")"
-    elif [ -d "$LOCAL_CLAIMS/run-$id" ] && ! CLAIMS="$LOCAL_CLAIMS" mine "run-$id"; then why="another session runs it"
-    elif [ "$type" = baseline ] && [ "$st" = draft ] && [ "$open" -gt 0 ]; then why="$open open questions for the owner in a baseline"
-    elif run_branch=$(open_run_branch "$id"); [ -n "$run_branch" ]; then why="its run branch $run_branch is not merged here yet: merge or close its pull request first"
+    if [ "$st" = blocked ]; then why="blocked: a person resumes it (/jsdd:plan $id)"; code=blocked
+    elif [ "$parked" != - ]; then why="parked at $parked"; code=parked
+    elif [ "$tnote" = "verify spec change" ]; then why="a spec change from verify waits for a person (/jsdd:specify $id)"; code=spec_change_waiting
+    elif ! in_list "$type" "$types"; then
+      code=type_out_of_scope
+      if [ "${MODE:-}" = autopilot ]; then why="autopilot runs feature specs only; a $type needs a person (/jsdd:$type $id)"
+      else why="type $type is not in autonomous.types $types"; fi
+    elif [ -n "$phases" ] && ! in_list "$phase" "$phases"; then why="phase $phase is not in autonomous.phases $phases"; code=phase_out_of_scope
+    elif [ "$waiting" != - ]; then why="waiting on $waiting"; code=waiting
+    elif [ -d "$CLAIMS/$num" ] && ! mine "$num"; then why="claimed $(claim_desc "$num")"; code=claimed
+    elif [ -d "$LOCAL_CLAIMS/run-$id" ] && ! CLAIMS="$LOCAL_CLAIMS" mine "run-$id"; then why="another session runs it"; code=running
+    elif [ "$type" = baseline ] && [ "$st" = draft ] && [ "$open" -gt 0 ]; then why="$open open questions for the owner in a baseline"; code=open_questions
+    elif [ "${MODE:-}" = autopilot ] && [ "$open" -gt 0 ]; then why="$open open questions: a person answers them first (/jsdd:specify $id)"; code=open_questions
+    elif run_branch=$(open_run_branch "$id"); [ -n "$run_branch" ]; then why="its run branch $run_branch is not merged here yet: merge or close its pull request first"; code=run_branch_open
     fi
     if [ -z "$why" ] && [ -n "$groups" ]; then
       for ref in $refs; do
         for g in $(list_items "$groups"); do
-          case $ref in "$g"|"$g"-*) why="refs $ref, in autonomous.exclude_groups"; break 2 ;; esac
+          case $ref in "$g"|"$g"-*) why="refs $ref, in autonomous.exclude_groups"; code=excluded_group; break 2 ;; esac
         done
       done
     fi
-    if [ -n "$why" ]; then printf '%s\t%s\t%s\tskip\t%s\n' "$id" "$type" "$st" "$why"; continue; fi
+    if [ -n "$why" ]; then printf '%s\t%s\t%s\tskip\t%s\t%s\n' "$id" "$type" "$st" "$why" "$code"; continue; fi
     case $type in
       spike) why="spike: research what the docs and code can answer" ;;
       baseline) why=$([ "$st" = draft ] && echo "baseline: survey and confirm rows" || echo "baseline: verify") ;;
@@ -1861,21 +2165,133 @@ would_park() {
   return 0
 }
 
+# queue_json: the queue as { mode, profile, take, skip }, skips with their reason codes.
+queue_json() {
+  queue_rows | jq -R -s -c --arg mode "$MODE" --arg profile "$PROFILE" '
+    split("\n") | map(select(length > 0) | split("\t")) as $r
+    | { mode: $mode, profile: $profile,
+        take: [$r[] | select(.[3] == "take") | { id: .[0], type: .[1], status: .[2], next: .[4] }],
+        skip: [$r[] | select(.[3] == "skip") | { id: .[0], type: .[1], status: .[2], reason: .[5], detail: .[4] }] }'
+}
+
+# doctor: what an unattended run needs. Each check is one line in $DOC:
+# id, ok|warn|fix, what was found, the fix. --unattended (or the cloud profile)
+# adds the checks a run with nobody at the machine needs, as FIX.
+doctor_checks() {
+  local f mode_ok perm="" un="${JSDD_UNATTENDED:-}" sha probe
+  DOC=""
+  d_add() { DOC="$DOC$1	$2	$3	${4:-}
+"; }
+  d_ok() { d_add "$1" ok "$2"; }
+  d_bad() { d_add "$1" fix "$2" "${3:-}"; }
+  d_warn() { d_add "$1" warn "$2" "${3:-}"; }
+  # u_need: warn in a session someone watches, FIX in an unattended run.
+  u_need() { if [ -n "$un" ]; then d_bad "$@"; else d_warn "$@"; fi; }
+  if [ -n "$CONFIG_ERRORS" ]; then d_bad config "$MODES_REL is invalid" "$(printf '%s' "$CONFIG_ERRORS" | head -3 | paste -sd ';' -) (all of them: jsdd mode --check)"
+  elif [ ! -f "$MODES_FILE" ]; then d_bad config "no $MODES_REL" "run /jsdd:auto setup, or write: version: 1 / modes: [manual, autonomous] / autonomous: / preset: cautious"
+  else d_ok config "$MODES_REL is valid"
+  fi
+  mode_ok=1
+  case $MODE in
+    autonomous|autopilot) d_ok mode "mode: $MODE ($MODE_SOURCE)" ;;
+    *) mode_ok=""
+       d_bad mode "mode is $MODE${MODE_WARN:+: $MODE_WARN}" "set SDD_MODE=autonomous in your shell, or under \"env\" in .claude/settings.local.json, then start a new session" ;;
+  esac
+  if [ -z "$GIT_COMMON" ]; then d_bad git "not a git repository" "git init, and commit the project"
+  else
+    if [ -n "$(cd "$ROOT" && git status --porcelain 2>/dev/null | grep -v '^?? specs/STATUS.md$' || true)" ]; then
+      d_bad clean_tree "the work tree has uncommitted changes" "commit or stash them: a run commits each task and must not sweep up your work"
+    else d_ok clean_tree "the work tree is clean"; fi
+    if [ "$(cd "$ROOT" && git rev-parse --abbrev-ref HEAD 2>/dev/null)" = "$MAIN_BRANCH" ]; then
+      d_ok branch "on $MAIN_BRANCH: each run creates its own branch (autonomous/<ID>-<slug>)"
+    fi
+  fi
+  if [ -n "$mode_ok" ] && [ "$(gate_policy pr.open "$MODE")" != park ]; then
+    if (cd "$ROOT" && git remote get-url origin >/dev/null 2>&1); then d_ok origin "remote origin is set"
+    else u_need origin "no remote named origin, so runs end with a local branch, not a pull request" "git remote add origin <url>"; fi
+    if ! command -v gh >/dev/null 2>&1; then u_need gh "gh is not installed: no pull requests" "install the GitHub CLI (https://cli.github.com), then: gh auth login"
+    elif ! gh auth status >/dev/null 2>&1; then u_need gh "gh is not signed in, so runs end with a local branch" "gh auth login, or set GH_TOKEN"
+    else d_ok gh "gh is signed in"; fi
+  fi
+  [ "$MODE" != autonomous ] || [ "$(gate_policy merge autonomous)" != auto ] \
+    || d_warn merge "preset $(autonomous_preset) merges converged specs once CI is green" "make sure the main branch requires CI checks; without any check, a run never merges"
+  if [ -n "${JSDD_PERMISSION_MODE:-}" ]; then perm="$JSDD_PERMISSION_MODE (from the claude flags jsdd auto run passes)"
+  else
+    for f in "$ROOT/.claude/settings.local.json" "$ROOT/.claude/settings.json" "$HOME/.claude/settings.json"; do
+      [ -f "$f" ] || continue
+      perm=$(tr -d '\r\n' <"$f" | grep -Eo '"defaultMode"[[:space:]]*:[[:space:]]*"[A-Za-z]+"' | head -1 | sed 's/.*"\([A-Za-z]*\)"$/\1/') || true
+      [ -z "$perm" ] || { perm="$perm (from ${f#"$ROOT"/})"; break; }
+    done
+  fi
+  case $perm in
+    bypassPermissions*|auto\ *) d_ok permissions "permission mode: $perm, so a run is not stopped by prompts" ;;
+    acceptEdits*) d_warn permissions "permission mode: $perm: edits pass, but commands still prompt and stall the run" \
+      "add allow rules to .claude/settings.local.json: \"permissions\": {\"allow\": [\"Bash(jsdd *)\", \"Bash(git *)\", \"Bash(gh *)\", \"Bash(<your test command> *)\"]}" ;;
+    *) u_need permissions "permission mode: ${perm:-default}: every edit and command prompts, so an unattended run stalls at the first one" \
+      "$(if [ -n "$un" ]; then echo "pass it to the session: jsdd auto run -- --permission-mode bypassPermissions (in a container or VM only)"
+         else echo "start the session with: claude --permission-mode acceptEdits, and allow jsdd, git, gh, and your test command in .claude/settings.local.json (\"permissions\": {\"allow\": [\"Bash(jsdd *)\", \"Bash(git *)\", \"Bash(gh *)\"]}); bypassPermissions only in a container or VM"; fi)" ;;
+  esac
+  [ -n "$un" ] || return 0
+  # Unattended: nobody can sign in, answer a prompt, or notice a local-only claim.
+  if command -v "${JSDD_CLAUDE:-claude}" >/dev/null 2>&1; then d_ok claude "Claude Code is installed (${JSDD_CLAUDE:-claude})"
+  else d_bad claude "Claude Code is not installed" "install it: npm install -g @anthropic-ai/claude-code, pinned to a version you tested"; fi
+  if [ -n "${CLAUDE_CODE_OAUTH_TOKEN:-}${ANTHROPIC_API_KEY:-}" ]; then d_ok claude_auth "Claude credentials are set"
+  else d_bad claude_auth "no Claude credentials in the environment" "set CLAUDE_CODE_OAUTH_TOKEN (made with: claude setup-token) or ANTHROPIC_API_KEY, from a secret"; fi
+  if [ -n "${JSDD_SESSION_ID:-}" ]; then d_ok session_id "JSDD_SESSION_ID is set: the runner and the session own the same claims"
+  else d_bad session_id "JSDD_SESSION_ID is not set" "jsdd auto run sets it; a script that drives jsdd itself exports one UUID per run"; fi
+  if command -v jq >/dev/null 2>&1; then d_ok jq "jq is installed"; else d_bad jq "jq is not installed" "install jq: the runner and JSON output need it"; fi
+  if [ -n "$GIT_COMMON" ]; then
+    if [ -n "$(gitcfg user.name)" ] && [ -n "$(gitcfg user.email)" ]; then d_ok git_identity "git identity: $(gitcfg user.name) <$(gitcfg user.email)>"
+    else d_bad git_identity "no git identity, so the run cannot commit" "git config user.name <bot name>; git config user.email <bot email>"; fi
+  fi
+  if ! remote_mode; then
+    d_bad claims_remote "claims are local: they die with the container, and other clones never see them" "add 'claims: remote' to $MODES_REL, or set SDD_CLAIMS=remote"
+  elif [ -n "$GIT_COMMON" ] && git -C "$ROOT" remote get-url "$CLAIMS_REMOTE" >/dev/null 2>&1; then
+    probe="doctor-$$-$RANDOM"
+    sha=$(claim_commit "$probe" "owner=$ME" state=probe)
+    if remote_git push -q --no-verify "$CLAIMS_REMOTE" "$sha:refs/sdd-claims/$probe" && remote_git push -q --no-verify "$CLAIMS_REMOTE" ":refs/sdd-claims/$probe"; then
+      d_ok claims_remote "claims are remote: pushing and deleting refs/sdd-claims/* on $CLAIMS_REMOTE works"
+    else
+      d_bad claims_remote "cannot push and delete refs/sdd-claims/* on $CLAIMS_REMOTE: $(printf '%s' "$REMOTE_ERR" | head -1)" "give the git token write access to the repository's contents (refs, not only branches)"
+    fi
+  else d_bad claims_remote "claims are remote, but there is no git remote '$CLAIMS_REMOTE'" "git remote add $CLAIMS_REMOTE <url>, or git config jsdd.claimsRemote <name>"
+  fi
+  return 0
+}
+
 cmd_auto() {
-  local sub=${1:-} rows id type st verdict why n=0 max fails=0 warns=0 f mode_ok perm=""
+  local sub=${1:-} rows id type st verdict why n=0 max fails warns
   case $sub in
     queue)
       resolve_mode; load_config
-      queue_rows | awk -F '\t' '$4 == "take" { printf "%s\t%s\t%s\t%s\n", $1, $2, $3, $5 }' ;;
+      rows=$(queue_rows)
+      if [ -n "$JSON" ]; then queue_json
+      else printf '%s\n' "$rows" | awk -F '\t' '$4 == "take" { printf "%s\t%s\t%s\t%s\n", $1, $2, $3, $5 }'
+      fi
+      # Nothing to take: exit 3, so a scheduled run can tell "nothing to do" from a failure.
+      printf '%s\n' "$rows" | grep -q "$(printf '\ttake\t')" || exit 3 ;;
     dry-run)
       resolve_mode
-      [ -z "$CONFIG_ERRORS" ] || { printf '%s\n' "$CONFIG_ERRORS"; echo "fix $MODES_REL first: jsdd mode --check" >&2; exit 1; }
-      mode_allowed autonomous || echo "note: $MODES_REL does not list autonomous under modes yet, so no run can start"
+      [ -z "$CONFIG_ERRORS" ] || { printf '%s\n' "$CONFIG_ERRORS" >&2; echo "fix $MODES_REL first: jsdd mode --check" >&2; exit 2; }
       max=$(MODE=autonomous budget_value specs_per_run)
+      rows=$(queue_rows)
+      if [ -n "$JSON" ]; then
+        printf '%s\n' "$rows" | while IFS="$(printf '\t')" read -r id type st verdict why; do
+          [ "$verdict" = take ] || continue
+          printf '%s\t%s\n' "$id" "$(would_park "$id" "$type" "$st" | paste -sd '|' -)"
+        done | jq -R -s -c --argjson q "$(queue_json)" --argjson max "$max" --arg preset "$(autonomous_preset)" \
+          --arg product "$(scope_value product)" --argjson hours "$(MODE=autonomous budget_value wall_time_hours)" \
+          --arg merge "$(gate_policy merge autonomous)" --argjson allowed "$(mode_allowed autonomous && echo true || echo false)" '
+          (split("\n") | map(select(length > 0) | split("\t") | { (.[0]): (.[1] // "" | split("|") | map(select(length > 0))) }) | add // {}) as $wp
+          | $q + { autonomous_allowed: $allowed, preset: $preset, product: $product, specs_per_run: $max, wall_time_hours: $hours,
+                   merge: (if $merge == "auto" then "auto" else "pull_request" end),
+                   take: ($q.take | to_entries | map(.value + { would_park: ($wp[.value.id] // []), next_loop: (.key >= $max) })) }'
+        return
+      fi
+      mode_allowed autonomous || echo "note: $MODES_REL does not list autonomous under modes yet, so no run can start"
       echo "autonomous, preset $(autonomous_preset), product $(scope_value product): up to $max specs in $(MODE=autonomous budget_value wall_time_hours)h; types $(scope_value types), phases $(scope_value phases), excluding $(scope_value exclude_groups)"
       echo "merge: $( [ "$(gate_policy merge autonomous)" = auto ] && echo "a converged spec with green CI is merged" || echo "each spec ends at a pull request for you to merge")"
       echo
-      rows=$(queue_rows)
       echo "A loop would take, in order:"
       while IFS="$(printf '\t')" read -r id type st verdict why; do
         [ "$verdict" = take ] || continue
@@ -1891,55 +2307,334 @@ EOF
         printf '%s\n' "$rows" | awk -F '\t' '$4 == "skip" { printf "  %-4s %s\n", $1, $5 }'
       fi ;;
     doctor)
+      shift
+      case ${1:-} in --unattended) JSDD_UNATTENDED=1 ;; "") ;; *) echo "usage: jsdd auto doctor [--unattended]" >&2; exit 2 ;; esac
       resolve_mode
-      d_ok() { echo "ok    $*"; }
-      d_bad() { echo "FIX   $1"; [ -z "${2:-}" ] || printf '      %s\n' "$2"; fails=$((fails + 1)); }
-      d_warn() { echo "warn  $1"; [ -z "${2:-}" ] || printf '      %s\n' "$2"; warns=$((warns + 1)); }
-      if [ -n "$CONFIG_ERRORS" ]; then d_bad "$MODES_REL is invalid" "$(printf '%s' "$CONFIG_ERRORS" | head -3 | paste -sd ';' -) (all of them: jsdd mode --check)"
-      elif [ ! -f "$MODES_FILE" ]; then d_bad "no $MODES_REL" "run /jsdd:auto setup, or write: version: 1 / modes: [manual, autonomous] / autonomous: / preset: cautious"
-      else d_ok "$MODES_REL is valid"
-      fi
-      mode_ok=1
-      case $MODE in
-        autonomous|autopilot) d_ok "mode: $MODE ($MODE_SOURCE)" ;;
-        *) mode_ok=""
-           d_bad "mode is $MODE${MODE_WARN:+: $MODE_WARN}" "set SDD_MODE=autonomous in your shell, or under \"env\" in .claude/settings.local.json, then start a new session" ;;
-      esac
-      if [ -z "$GIT_COMMON" ]; then d_bad "not a git repository" "git init, and commit the project"
+      doctor_checks
+      fails=$(printf '%s' "$DOC" | awk -F '\t' '$2 == "fix"' | grep -c . || true)
+      warns=$(printf '%s' "$DOC" | awk -F '\t' '$2 == "warn"' | grep -c . || true)
+      if [ -n "$JSON" ]; then
+        printf '%s' "$DOC" | tsv_json id status message fix | jq -c --arg mode "$MODE" --arg profile "$PROFILE" \
+          --argjson un "$([ -n "${JSDD_UNATTENDED:-}" ] && echo true || echo false)" \
+          '{ mode: $mode, profile: $profile, unattended: $un, ready: (map(select(.status == "fix")) | length == 0),
+             fix: (map(select(.status == "fix")) | length), warn: (map(select(.status == "warn")) | length), checks: . }'
       else
-        if [ -n "$(cd "$ROOT" && git status --porcelain 2>/dev/null | grep -v '^?? specs/STATUS.md$' || true)" ]; then
-          d_bad "the work tree has uncommitted changes" "commit or stash them: a run commits each task and must not sweep up your work"
-        else d_ok "the work tree is clean"; fi
-        if [ "$(cd "$ROOT" && git rev-parse --abbrev-ref HEAD 2>/dev/null)" = "$MAIN_BRANCH" ]; then
-          d_ok "on $MAIN_BRANCH: each run creates its own branch (autonomous/<ID>-<slug>)"
-        fi
+        printf '%s' "$DOC" | awk -F '\t' '{ printf "%-5s %s\n", ($2 == "fix" ? "FIX" : $2), $3; if ($4 != "") printf "      %s\n", $4 }'
+        echo
+        if [ "$fails" -gt 0 ]; then echo "$fails to fix$([ "$warns" -eq 0 ] || echo ", $warns warnings")"
+        else echo "ready$([ "$warns" -eq 0 ] || echo ", $warns warnings")"; fi
       fi
-      if [ -n "$mode_ok" ] && [ "$(gate_policy pr.open "$MODE")" != park ]; then
-        if (cd "$ROOT" && git remote get-url origin >/dev/null 2>&1); then d_ok "remote origin is set"
-        else d_warn "no remote named origin, so runs end with a local branch, not a pull request" "git remote add origin <url>"; fi
-        if ! command -v gh >/dev/null 2>&1; then d_warn "gh is not installed: no pull requests" "install the GitHub CLI (https://cli.github.com), then: gh auth login"
-        elif ! gh auth status >/dev/null 2>&1; then d_warn "gh is not signed in, so runs end with a local branch" "gh auth login"
-        else d_ok "gh is signed in"; fi
-      fi
-      [ "$MODE" != autonomous ] || [ "$(gate_policy merge autonomous)" != auto ] \
-        || d_warn "preset $(autonomous_preset) merges converged specs once CI is green" "make sure the main branch requires CI checks; without any check, a run never merges"
-      for f in "$ROOT/.claude/settings.local.json" "$ROOT/.claude/settings.json" "$HOME/.claude/settings.json"; do
-        [ -f "$f" ] || continue
-        perm=$(tr -d '\r\n' <"$f" | grep -Eo '"defaultMode"[[:space:]]*:[[:space:]]*"[A-Za-z]+"' | head -1 | sed 's/.*"\([A-Za-z]*\)"$/\1/') || true
-        [ -z "$perm" ] || { perm="$perm (from ${f#"$ROOT"/})"; break; }
-      done
-      case $perm in
-        bypassPermissions*|auto\ *) d_ok "permission mode: $perm, so a run is not stopped by prompts" ;;
-        acceptEdits*) d_warn "permission mode: $perm: edits pass, but commands still prompt and stall the run" \
-          "add allow rules to .claude/settings.local.json: \"permissions\": {\"allow\": [\"Bash(jsdd *)\", \"Bash(git *)\", \"Bash(gh *)\", \"Bash(<your test command> *)\"]}" ;;
-        *) d_warn "permission mode: ${perm:-default}: every edit and command prompts, so an unattended run stalls at the first one" \
-          "start the session with: claude --permission-mode acceptEdits, and allow jsdd, git, gh, and your test command in .claude/settings.local.json (\"permissions\": {\"allow\": [\"Bash(jsdd *)\", \"Bash(git *)\", \"Bash(gh *)\"]}); bypassPermissions only in a container or VM" ;;
-      esac
-      echo
-      if [ $fails -gt 0 ]; then echo "$fails to fix$([ $warns -eq 0 ] || echo ", $warns warnings")"; exit 1; fi
-      echo "ready$([ $warns -eq 0 ] || echo ", $warns warnings")" ;;
-    *) echo "usage: jsdd auto <queue | dry-run | doctor>" >&2; exit 1 ;;
+      [ "$fails" -eq 0 ] || exit 2 ;;
+    run) shift; auto_run "$@" ;;
+    *) echo "usage: jsdd auto <queue | dry-run | doctor | run>" >&2; exit 2 ;;
   esac
+}
+
+# --- run results -------------------------------------------------------------
+# run-result.json, beside run-report.md, is the record a script reads; the run
+# report stays the one a person reads. jsdd writes it from what is on disk, never
+# the model: "run result <ID> --write" (the skill, before its last commit),
+# "run end" (if it is still missing), and jsdd auto run (after a crash, with the
+# session's cost). One entry per run; a later run on the same spec adds one.
+
+# iso_time [epoch]: UTC time, ISO 8601 (BSD and GNU date).
+iso_time() {
+  if [ -z "${1:-}" ]; then date -u '+%Y-%m-%dT%H:%M:%SZ'
+  else date -u -r "$1" '+%Y-%m-%dT%H:%M:%SZ' 2>/dev/null || date -u -d "@$1" '+%Y-%m-%dT%H:%M:%SZ'; fi
+}
+
+# new_uuid: a random UUID, lower case.
+new_uuid() {
+  local u=""
+  u=$(uuidgen 2>/dev/null) || u=$(cat /proc/sys/kernel/random/uuid 2>/dev/null) \
+    || u=$(python3 -c 'import uuid; print(uuid.uuid4())' 2>/dev/null) || u=$(python -c 'import uuid; print(uuid.uuid4())')
+  printf '%s' "$u" | tr 'A-F' 'a-f'
+}
+
+# main_base: the ref a run branch started from (the remote's main branch, else the local one).
+main_base() {
+  local b
+  for b in "refs/remotes/$CLAIMS_REMOTE/$MAIN_BRANCH" "refs/remotes/origin/$MAIN_BRANCH" "refs/heads/$MAIN_BRANCH"; do
+    if git -C "$ROOT" rev-parse -q --verify "$b" >/dev/null 2>&1; then echo "$b"; return; fi
+  done
+}
+
+# assumed_of <ID>: the AS-nn rows in docs/decisions.md whose Spec column names the spec.
+assumed_of() {
+  local f="$ROOT/docs/decisions.md"
+  [ -f "$f" ] || return 0
+  section "$f" Assumed | awk -F '|' -v id="$1" '$2 ~ /AS-[0-9]+/ && index($8, id) { gsub(/ /, "", $2); print $2 }'
+}
+
+# result_entry <ID>: this session's latest entry in the spec's run-result.json, or nothing.
+result_entry() {
+  local f
+  f="$(spec_dir "$1")/run-result.json"
+  [ -f "$f" ] || return 0
+  jq -c --arg s "$ME" '.runs // [] | map(select(.session == $s)) | last // empty' "$f" 2>/dev/null || true
+}
+
+# result_write <ID> [--outcome <o>] [--claude <result event file>] [--session-failed]
+result_write() {
+  local id=$1 outcome="" cfile="" sfail="" dir f spec st parked gate="" reason="" branch base mb="" commits=0 work=0
+  local prog ticked total since="" started="" old entry claude=null existing assumed hours
+  shift
+  while [ $# -gt 0 ]; do
+    case $1 in
+      --outcome) [ $# -ge 2 ] || { echo "--outcome needs a value" >&2; exit 2; }; outcome=$2; shift ;;
+      --claude) [ $# -ge 2 ] || { echo "--claude needs a file" >&2; exit 2; }; cfile=$2; shift ;;
+      --session-failed) sfail=1 ;;
+      *) echo "unknown option '$1'" >&2; exit 2 ;;
+    esac; shift
+  done
+  case $outcome in ""|done|merged|parked|budget|failed|noop) ;; *) echo "unknown outcome '$outcome' (done, merged, parked, budget, failed, noop)" >&2; exit 2 ;; esac
+  need_jq
+  dir=$(spec_dir "$id"); f="$dir/run-result.json"; spec="$dir/spec.md"
+  st=$(fm "$spec" status); parked=$(fm "$spec" parked)
+  prog="$spec"; [ -f "$dir/tasks.md" ] && prog="$dir/tasks.md"
+  ticked=$(count '^[[:space:]]*- \[[xX]\]' "$prog"); total=$(count '^[[:space:]]*- \[[ xX]\]' "$prog")
+  branch=$(git -C "$ROOT" rev-parse --abbrev-ref HEAD 2>/dev/null || echo -)
+  base=$(main_base)
+  if [ -n "$base" ]; then
+    mb=$(git -C "$ROOT" merge-base HEAD "$base" 2>/dev/null || true)
+    if [ -n "$mb" ]; then
+      commits=$(git -C "$ROOT" rev-list --count "$mb..HEAD")
+      work=$(git -C "$ROOT" log --format=%s "$mb..HEAD" | grep -v -e "^\[$id\] Spec" -e "^\[$id\] Run result" | grep -c . || true)
+    fi
+  fi
+  if [ -d "$LOCAL_CLAIMS/run-$id" ]; then since=$(CLAIMS="$LOCAL_CLAIMS" claim_get "run-$id" since); fi
+  [ -z "$since" ] || started=$(iso_time "$since")
+  existing=$(result_entry "$id")
+  if [ -z "$outcome" ] && [ -n "$existing" ]; then
+    # This session already recorded the run: keep its outcome, add what is new.
+    outcome=$(printf '%s' "$existing" | jq -r .outcome)
+    gate=$(printf '%s' "$existing" | jq -r '.gate // empty'); reason=$(printf '%s' "$existing" | jq -r '.reason // empty')
+  elif [ -z "$outcome" ]; then
+    if [ "$st" = done ]; then outcome=done
+    elif [ -n "$parked" ]; then outcome=parked
+    elif [ -n "$since" ] && { resolve_mode; hours=$(CLAIMS="$LOCAL_CLAIMS" run_hours_left "$id"); [ "$hours" -le 0 ]; }; then outcome=budget
+    elif [ "$work" -eq 0 ]; then outcome=noop
+    else outcome=failed
+    fi
+    [ -z "$sfail" ] || [ "$outcome" != noop ] || outcome=failed
+  fi
+  if [ "$outcome" = parked ] && [ -z "$gate" ] && [ -n "$parked" ]; then gate=${parked%%:*}; reason=${parked#*: }; fi
+  if [ -n "$cfile" ] && [ -s "$cfile" ]; then
+    claude=$(jq -c '{ cost_usd: (.total_cost_usd // null), turns: (.num_turns // null), is_error: (.is_error // null), session_id: (.session_id // null) }' "$cfile" 2>/dev/null) || claude=null
+  fi
+  assumed=$(assumed_of "$id" | jq -R . | jq -s -c .)
+  entry=$(jq -n -c --arg mode "${MODE:-${SDD_MODE:-}}" --arg profile "$PROFILE" --arg s "$ME" --arg outcome "$outcome" \
+    --arg gate "$gate" --arg reason "$reason" --arg branch "$branch" --arg base "${base#refs/*/}" --arg status "$st" \
+    --argjson ticked "$ticked" --argjson total "$total" --argjson commits "$commits" --argjson assumed "$assumed" \
+    --arg started "$started" --arg ended "$(iso_time)" --argjson claude "$claude" '
+    def opt: if . == "" then null else . end;
+    { mode: ($mode | opt), profile: $profile, session: $s, outcome: $outcome, gate: ($gate | opt), reason: ($reason | opt),
+      branch: $branch, base: ($base | opt), status: $status, tasks: { ticked: $ticked, total: $total },
+      commits: $commits, assumed: $assumed, started: ($started | opt), ended: $ended, claude: $claude }')
+  old='{}'; [ ! -f "$f" ] || old=$(cat "$f")
+  printf '%s' "$old" | jq --argjson e "$entry" --arg id "$id" --arg s "$ME" '
+    ($e | if .claude == null then del(.claude) else . end | if .started == null then del(.started) else . end) as $new
+    | { schema: "jsdd.run-result/1", spec: $id, runs: (.runs // []) }
+    | if (.runs | length) > 0 and .runs[-1].session == $s
+      then .runs[-1] = (.runs[-1] + $new)
+      else .runs += [{ n: ((.runs | length) + 1), claude: null, started: null } + $new] end' >"$f.tmp.$$" && mv "$f.tmp.$$" "$f"
+  event run.result "spec=$id" "outcome=$outcome"
+  echo "$id: $outcome (${f#"$ROOT"/})"
+}
+
+# result_show <ID>: the latest run of the spec, with its pull request when gh finds one.
+result_show() {
+  local f entry pr=""
+  f="$(spec_dir "$1")/run-result.json"
+  [ -f "$f" ] || { echo "$1 has no run-result.json: no run recorded a result yet" >&2; exit 1; }
+  need_jq
+  entry=$(jq -c '.runs[-1]' "$f")
+  if command -v gh >/dev/null 2>&1; then
+    pr=$(cd "$ROOT" && gh pr list --head "$(printf '%s' "$entry" | jq -r .branch)" --state all --json url -q '.[0].url' 2>/dev/null) || pr=""
+  fi
+  if [ -n "$JSON" ]; then
+    printf '%s' "$entry" | jq -c --arg id "$1" --arg pr "$pr" '{ spec: $id, pr: (if $pr == "" then null else $pr end) } + .'
+  else
+    printf '%s' "$entry" | jq -r --arg id "$1" --arg pr "$pr" '
+      "\($id) run \(.n): \(.outcome)\(if .gate then " at \(.gate) (\(.reason))" else "" end); branch \(.branch); \(.tasks.ticked)/\(.tasks.total) tasks; \(.commits) commits\(if .claude.cost_usd then "; $\(.claude.cost_usd)" else "" end)\(if $pr != "" then "\npull request: \($pr)" else "" end)"'
+  fi
+}
+
+# loop_result_file: specs/runs/<date>-<n>.json, next to this loop's report.
+loop_result_file() {
+  local d="$SPECS_DIR/runs" last n=1
+  last=$(ls "$d"/"$(date +%F)"-*.md 2>/dev/null | sort -t- -k4 -n | tail -1 || true)
+  if [ -n "$last" ]; then echo "${last%.md}.json"; return; fi
+  while [ -e "$d/$(date +%F)-$n.json" ]; do n=$((n + 1)); done
+  echo "$d/$(date +%F)-$n.json"
+}
+
+# loop_result_write: the loop's result: the specs it took and how each ended.
+loop_result_write() {
+  local CLAIMS="$LOCAL_CLAIMS" f since
+  need_jq
+  f=$(loop_result_file); mkdir -p "$(dirname "$f")"
+  since=$(claim_get run-loop since)
+  sed -n 's/^result=//p' "$CLAIMS/run-loop/owner" 2>/dev/null | tr ':' '\t' | tsv_json spec outcome branch \
+    | jq --arg s "$ME" --arg started "$(iso_time "${since:-$(date +%s)}")" --arg ended "$(iso_time)" --arg preset "$(autonomous_preset)" \
+      --argjson taken "$(loop_taken | jq -R . | jq -s -c .)" '
+      { schema: "jsdd.loop-result/1", session: $s, preset: $preset, started: $started, ended: $ended,
+        taken: $taken, specs: . }' >"$f"
+  event loop.result "file=${f#"$ROOT"/}"
+  echo "loop result: ${f#"$ROOT"/}"
+}
+
+# --- the headless runner: jsdd auto run --------------------------------------
+# Starts claude -p on one spec (or the autonomous loop) with nobody watching,
+# and has the last word on what happened: after the session ends, however it
+# ends, the spec has a run-result.json, and the branch is committed and pushed.
+# Exit code: the outcome's (docs/machine-output.md). The runner never picks a
+# permission mode: the caller passes it after --.
+
+auto_run() {
+  local id="" loop="" wt="" a perm="" rundir log res rc=0 out prompt claude dir outcome code branch pushed=false pr="" entry
+  local wtdir base f open failed="" ids
+  while [ $# -gt 0 ]; do
+    case $1 in
+      --loop) loop=1 ;;
+      --worktree) wt=1 ;;
+      --) shift; break ;;
+      -*) echo "unknown option '$1' (flags for claude go after --)" >&2; exit 2 ;;
+      *) [ -z "$id" ] || { echo "usage: jsdd auto run [<ID> | --loop] [--worktree] [--json] [-- <claude flags>]" >&2; exit 2; }; id=$(norm_id "$1") ;;
+    esac
+    shift
+  done
+  [ -z "$id" ] || [ -z "$loop" ] || { echo "usage: jsdd auto run [<ID> | --loop] [--worktree] [--json] [-- <claude flags>]" >&2; exit 2; }
+  need_jq
+  [ -n "$GIT_COMMON" ] || { echo "jsdd auto run needs a git repository" >&2; exit 2; }
+  for a in "$@"; do
+    case $a in --dangerously-skip-permissions) perm=bypassPermissions ;; esac
+  done
+  perm=${perm:-$(printf '%s\n' "$@" | awk 'prev == "--permission-mode" { print; exit } { prev = $0; if (index($0, "--permission-mode=") == 1) { print substr($0, 19); exit } }')}
+  JSDD_SESSION_ID=${JSDD_SESSION_ID:-$(new_uuid)}; export JSDD_SESSION_ID; ME=$JSDD_SESSION_ID
+  rundir="$GIT_COMMON/jsdd-runs/$JSDD_SESSION_ID"; mkdir -p "$rundir"
+  JSDD_EVENTS=${JSDD_EVENTS:-$rundir/events.ndjson}; export JSDD_EVENTS
+  resolve_mode
+  # The session sees the same settings, and prints text: JSON is for this caller.
+  export SDD_MODE="$MODE" SDD_CLAIMS="$CLAIMS_MODE" JSDD_OUTPUT=text
+
+  # Fetch first: the queue leaves out specs whose run branch is open on the remote.
+  if git -C "$ROOT" remote get-url origin >/dev/null 2>&1; then
+    remote_git fetch -q --prune --no-tags origin "+refs/heads/*:refs/remotes/origin/*" \
+      || { printf 'cannot fetch origin:\n%s\n' "$REMOTE_ERR" >&2; exit 7; }
+  fi
+  claims_sync write
+
+  if [ -n "$wt" ]; then
+    # A worktree of its own from the main branch, so a laptop's cron never touches a checkout in use.
+    base=$(main_base); [ -n "$base" ] || { echo "no $MAIN_BRANCH branch to start a worktree from" >&2; exit 2; }
+    wtdir="$rundir/worktree"
+    git -C "$ROOT" worktree add -q --detach "$wtdir" "$base" || exit 1
+    rc=0
+    # shellcheck disable=SC2086  # an empty ID is no argument
+    out=$(cd "$wtdir" && JSDD_OUTPUT=json "$0" auto run ${id:-} ${loop:+--loop} -- "$@") || rc=$?
+    printf '%s' "$out" | jq -r '.errors[]?.message' >&2 || true
+    if [ -z "$(git -C "$wtdir" status --porcelain 2>/dev/null)" ] && \
+      { [ "$(git -C "$wtdir" rev-parse --abbrev-ref HEAD)" = HEAD ] || [ -z "$(git -C "$wtdir" log --oneline '@{u}..' 2>/dev/null || echo unpushed)" ]; }; then
+      git -C "$ROOT" worktree remove --force "$wtdir" 2>/dev/null || true
+    else
+      echo "kept the worktree $wtdir: it has work that is not pushed" >&2
+    fi
+    if [ -n "$JSON" ]; then printf '%s' "$out" | jq -c '.data'
+    else printf '%s' "$out" | jq -r '.data | if . == null then empty else "\(.spec // "loop"): \(.outcome)" end'; fi
+    return "$rc"
+  fi
+
+  if ! out=$(JSDD_UNATTENDED=1 JSDD_PERMISSION_MODE="$perm" "$0" auto doctor 2>&1); then
+    printf '%s\n' "$out" | grep -E '^(FIX|      )' >&2 || true
+    echo "jsdd auto run: an unattended run cannot start until the checks above pass (jsdd auto doctor --unattended)" >&2
+    exit 2
+  fi
+
+  if [ -n "$loop" ]; then
+    [ "$MODE" = autonomous ] || { echo "a loop needs autonomous mode; the mode is $MODE" >&2; exit 2; }
+    "$0" auto queue >/dev/null 2>&1 || { rc=$?; [ $rc -eq 3 ] && { echo "nothing to do: the queue is empty" >&2; exit 3; }; exit $rc; }
+  elif [ -z "$id" ]; then
+    id=$("$0" auto queue 2>/dev/null | head -1 | cut -f1) || true
+    [ -n "$id" ] || { echo "nothing to do: no spec is ready (jsdd auto queue)" >&2; exit 3; }
+  fi
+
+  prompt="/jsdd:auto${id:+ $id}"
+  claude=${JSDD_CLAUDE:-claude}
+  log="$rundir/session.ndjson"; res="$rundir/result.json"
+  event session.start "spec=${id:-loop}" "prompt=$prompt"
+  rc=0
+  "$claude" -p "$prompt" --session-id "$JSDD_SESSION_ID" --output-format stream-json --verbose "$@" \
+    >"$log" 2>"$rundir/session.err" </dev/null || rc=$?
+  jq -c -R 'fromjson? | select(type == "object" and .type == "result")' "$log" 2>/dev/null | tail -1 >"$res" || true
+  event session.end "spec=${id:-loop}" "exit=$rc" "cost_usd=$(jq -r '.total_cost_usd // empty' "$res" 2>/dev/null || true)"
+
+  # Reconcile: the spec this session still runs (a crash, a limit, a kill) gets a result and is ended.
+  open=$(CLAIMS="$LOCAL_CLAIMS" my_runs | head -1)
+  [ -n "$loop" ] || open=${open:-$id}
+  if [ -n "$open" ]; then
+    [ "$rc" -eq 0 ] && [ "$(jq -r '.is_error // false' "$res" 2>/dev/null)" != true ] || failed=--session-failed
+    # A result the skill already wrote keeps its outcome and gains the session's cost.
+    "$0" run result "$open" --write --claude "$res" ${failed:+"$failed"} >/dev/null
+    "$0" run end "$open" >/dev/null 2>&1 || true
+    run_commit_push "$open"
+  fi
+  if [ -n "$loop" ] && CLAIMS="$LOCAL_CLAIMS" my_loop; then "$0" run end --loop >/dev/null 2>&1 || true; fi
+
+  if [ -n "$loop" ]; then
+    f=$(ls -t "$SPECS_DIR"/runs/*.json 2>/dev/null | head -1 || true)
+    ids=$( [ -z "$f" ] || jq -r '.specs[]?.outcome' "$f" )
+    code=0; printf '%s\n' "$ids" | grep -qx failed && code=1
+    if [ -n "$JSON" ]; then
+      jq -n -c --arg f "${f#"$ROOT"/}" --argjson loop "$( [ -n "$f" ] && cat "$f" || echo null)" --argjson rc "$code" \
+        --arg log "$log" --arg events "$JSDD_EVENTS" --argjson claude "$(cat "$res" 2>/dev/null | jq -c . 2>/dev/null || echo null)" '
+        { spec: null, outcome: (if $rc == 0 then "done" else "failed" end), exit: $rc, loop: $loop, loop_file: $f,
+          claude: ($claude | if . == null then null else { cost_usd: .total_cost_usd, turns: .num_turns, is_error: .is_error } end),
+          logs: { session: $log, events: $events } }'
+    else
+      echo "loop ended: $(printf '%s\n' "$ids" | grep -c . || true) specs${f:+ (${f#"$ROOT"/})}"
+      echo "session log: $log"
+    fi
+    return "$code"
+  fi
+
+  dir=$(spec_dir "$id")
+  entry=$(jq -c '.runs[-1]' "$dir/run-result.json" 2>/dev/null || echo null)
+  outcome=$(printf '%s' "$entry" | jq -r '.outcome // "failed"')
+  branch=$(git -C "$ROOT" rev-parse --abbrev-ref HEAD)
+  if [ -n "$(git -C "$ROOT" rev-parse -q --verify "refs/remotes/origin/$branch" 2>/dev/null)" ] && \
+    [ "$(git -C "$ROOT" rev-parse HEAD)" = "$(git -C "$ROOT" rev-parse "refs/remotes/origin/$branch")" ]; then pushed=true; fi
+  if command -v gh >/dev/null 2>&1 && [ "$pushed" = true ]; then
+    pr=$(cd "$ROOT" && gh pr list --head "$branch" --state all --json url -q '.[0].url' 2>/dev/null) || pr=""
+  fi
+  [ -z "$pr" ] || event pr "spec=$id" "url=$pr"
+  case $outcome in done|merged|noop) code=0 ;; parked) code=4 ;; budget) code=5 ;; *) code=1 ;; esac
+  if [ -n "$JSON" ]; then
+    jq -n -c --arg id "$id" --arg o "$outcome" --argjson code "$code" --arg branch "$branch" --argjson pushed "$pushed" \
+      --arg pr "$pr" --argjson result "$entry" --arg log "$log" --arg events "$JSDD_EVENTS" '
+      { spec: $id, outcome: $o, exit: $code, branch: $branch, pushed: $pushed, pr: (if $pr == "" then null else $pr end),
+        result: $result, logs: { session: $log, events: $events } }'
+  else
+    echo "$id: $outcome on $branch$( [ "$pushed" = true ] && echo ", pushed" || echo ", not pushed")"
+    [ -z "$pr" ] || echo "pull request: $pr"
+    echo "session log: $log"
+  fi
+  return "$code"
+}
+
+# run_commit_push <ID>: commit what the runner wrote in the spec folder, and push
+# the run branch (never --force; never the main branch).
+run_commit_push() {
+  local dir branch
+  dir=$(spec_dir "$1"); branch=$(git -C "$ROOT" rev-parse --abbrev-ref HEAD)
+  case $branch in "$MAIN_BRANCH"|HEAD) echo "the run left no branch of its own; nothing pushed" >&2; return 0 ;; esac
+  if [ -n "$(git -C "$ROOT" status --porcelain -- "$dir")" ]; then
+    git -C "$ROOT" add -- "$dir" && git -C "$ROOT" commit -q -m "[$1] Run result" -- "$dir" || true
+  fi
+  [ "$(gate_policy pr.open "$MODE")" != park ] || return 0
+  git -C "$ROOT" remote get-url origin >/dev/null 2>&1 || return 0
+  remote_git push -q -u origin HEAD || printf 'could not push %s:\n%s\n' "$branch" "$REMOTE_ERR" >&2
+  return 0
 }
 
 # --- frozen checks ---------------------------------------------------------
@@ -1966,7 +2661,7 @@ lock_get() {
 }
 
 cmd_freeze() {
-  [ $# -ge 1 ] || { echo "usage: jsdd freeze <ID> [--accept <Tn>...]" >&2; exit 1; }
+  [ $# -ge 1 ] || { echo "usage: jsdd freeze <ID> [--accept <Tn>...]" >&2; exit 2; }
   local id dir lock t cmd old accept=" " changed="" checks devs tab total added=0
   id=$(norm_id "$1"); shift
   if [ "${1:-}" = --accept ]; then shift; for t in "$@"; do accept="$accept$(norm_task "$t") "; done; fi
@@ -1997,6 +2692,7 @@ CHECKS
   { echo "# Checks frozen when the plan was approved, by jsdd freeze. jsdd done refuses a task whose check differs."
     printf '%s\n' "$checks"; } > "$lock"
   total=$(printf '%s\n' "$checks" | grep -c . || true)
+  event freeze "spec=$id" "tasks=$total"
   echo "froze the checks of $id: $total tasks, $added new, in ${lock#"$ROOT"/}"
 }
 
@@ -2011,7 +2707,7 @@ section() {
 }
 
 cmd_pr() {
-  [ $# -ge 1 ] || { echo "usage: jsdd pr <ID> [--title]" >&2; exit 1; }
+  [ $# -ge 1 ] || { echo "usage: jsdd pr <ID> [--title]" >&2; exit 2; }
   local id dir spec rel out refs parked
   id=$(norm_id "$1"); dir=$(spec_dir "$id"); spec="$dir/spec.md"; rel=${dir#"$ROOT"/}
   if [ "${2:-}" = --title ]; then echo "[$id] $(fm "$spec" title)"; return; fi
@@ -2030,9 +2726,28 @@ cmd_pr() {
   return 0
 }
 
+# status_json: the board as data: the mode, every spec, and next's rows.
+status_json() {
+  local specs nxt
+  specs=$(records | sort | tsv_json id type status phase depends_on done total open_questions title dir claim task_note parked | jq -c '
+    map(.done |= tonumber | .total |= tonumber | .open_questions |= tonumber
+        | .depends_on |= (if . == null then [] else split(",") end)
+        | .parked |= (if . == null then null else { gate: split(": ")[0], reason: (split(": ")[1:] | join(": ")) } end))')
+  nxt=$(next_json)
+  jq -n -c --arg mode "$MODE" --arg src "$MODE_SOURCE" --arg warn "$MODE_WARN" --arg profile "$PROFILE" \
+    --argjson specs "$specs" --argjson next "$nxt" --argjson assumed "$(assumed_count)" '
+    { mode: $mode, mode_source: $src, mode_warning: (if $warn == "" then null else $warn end), profile: $profile,
+      specs: $specs, next: $next, assumed_decisions: $assumed,
+      counts: ($specs | group_by(.status) | map({ (.[0].status // "unknown"): length }) | add // {}) }'
+}
+
 cmd_status() {
   local out claims
   resolve_mode
+  if [ -n "$JSON" ]; then
+    [ "${1:-}" != --write ] || JSON="" cmd_status --write >/dev/null
+    status_json; return
+  fi
   mode_banner
   out=$(board)
   printf '%s\n\nNext up:\n%s\n' "$out" "$(next_up)"
@@ -2210,7 +2925,7 @@ cmd_init() {
     case $a in
       --migrate) migrate=1 ;;
       --dry-run) dry=1 ;;
-      *) echo "unknown option '$a'" >&2; usage >&2; exit 1 ;;
+      *) echo "unknown option '$a'" >&2; usage >&2; exit 2 ;;
     esac
   done
   run() { [ -n "$dry" ] || "$@"; }
@@ -2294,40 +3009,79 @@ cmd_init() {
   fi
 }
 
-case "${1:-}" in
-  init|-h|--help|help|"") ;;
-  *) [ -d "$SPECS_DIR" ] || { echo "no specs/ folder in $ROOT: run 'jsdd init' first" >&2; exit 1; } ;;
-esac
+# json_schema <command> <sub> <arg>: the schema of a command's JSON output, or
+# nothing when it has none. Only these follow $JSDD_OUTPUT=json; the commands
+# skills, hooks, and GitHub read as text (pr, gate, budget, run next,
+# stop-check, charter get) never print JSON.
+json_schema() {
+  case $1 in
+    next|status|mode|profile) echo "jsdd.$1/1" ;;
+    charter) [ -n "$2" ] || echo "jsdd.charter/1" ;;
+    auto) case $2 in queue|dry-run|doctor) echo "jsdd.$2/1" ;; run) echo "jsdd.auto-run/1" ;; esac ;;
+    run) case $2 in status) echo "jsdd.run-status/1" ;; result) echo "jsdd.run-result/1" ;; esac ;;
+  esac
+  return 0
+}
 
-# Remote claims: a write fetches first and stops when the remote is unreachable;
-# a read reuses a recent fetch and falls back to the cache.
-case "${1:-}" in
-  claim|release|done|new) claims_sync write ;;
-  claims) if [ "${2:-}" = --prune ]; then claims_sync write; else claims_sync; fi ;;
-  status|next) claims_sync ;;
-esac
+main() {
+  case "${1:-}" in
+    init|-h|--help|help|"") ;;
+    *) [ -d "$SPECS_DIR" ] || { echo "no specs/ folder in $ROOT: run 'jsdd init' first" >&2; exit 1; } ;;
+  esac
 
-case "${1:-}" in
-  init) shift; cmd_init "$@" ;;
-  new) shift; cmd_new "$@" ;;
-  status) shift; cmd_status "$@" ;;
-  next) next_up ;;
-  claim) shift; cmd_claim "$@" ;;
-  release) shift; cmd_release "$@" ;;
-  done) shift; cmd_done "$@" ;;
-  claims) shift; cmd_claims "$@" ;;
-  coverage) shift; cmd_coverage "$@" ;;
-  capabilities) shift; cmd_capabilities "$@" ;;
-  mode) shift; cmd_mode "$@" ;;
-  gate) shift; cmd_gate "$@" ;;
-  budget) shift; cmd_budget "$@" ;;
-  park) shift; cmd_park "$@" ;;
-  unpark) shift; cmd_unpark "$@" ;;
-  run) shift; cmd_run "$@" ;;
-  charter) shift; cmd_charter "$@" ;;
-  auto) shift; cmd_auto "$@" ;;
-  freeze) shift; cmd_freeze "$@" ;;
-  pr) shift; cmd_pr "$@" ;;
-  -h|--help|help|"") usage ;;
-  *) echo "unknown command '$1'" >&2; usage >&2; exit 1 ;;
-esac
+  # Remote claims: a write fetches first and stops when the remote is unreachable;
+  # a read reuses a recent fetch and falls back to the cache.
+  case "${1:-}" in
+    claim|release|done|new) claims_sync write ;;
+    claims) if [ "${2:-}" = --prune ]; then claims_sync write; else claims_sync; fi ;;
+    status|next) claims_sync ;;
+    auto) case ${2:-} in queue|dry-run) claims_sync ;; esac ;;
+  esac
+
+  case "${1:-}" in
+    init) shift; cmd_init "$@" ;;
+    new) shift; cmd_new "$@" ;;
+    status) shift; cmd_status "$@" ;;
+    next) cmd_next ;;
+    profile) shift; cmd_profile "$@" ;;
+    claim) shift; cmd_claim "$@" ;;
+    release) shift; cmd_release "$@" ;;
+    done) shift; cmd_done "$@" ;;
+    claims) shift; cmd_claims "$@" ;;
+    coverage) shift; cmd_coverage "$@" ;;
+    capabilities) shift; cmd_capabilities "$@" ;;
+    mode) shift; cmd_mode "$@" ;;
+    gate) shift; cmd_gate "$@" ;;
+    budget) shift; cmd_budget "$@" ;;
+    park) shift; cmd_park "$@" ;;
+    unpark) shift; cmd_unpark "$@" ;;
+    run) shift; cmd_run "$@" ;;
+    charter) shift; cmd_charter "$@" ;;
+    auto) shift; cmd_auto "$@" ;;
+    freeze) shift; cmd_freeze "$@" ;;
+    pr) shift; cmd_pr "$@" ;;
+    -h|--help|help|"") usage ;;
+    *) echo "unknown command '$1'" >&2; usage >&2; exit 2 ;;
+  esac
+}
+
+# --json anywhere before a "--" asks for JSON output.
+JSON_FLAG=""; _dd=""
+for _a do
+  shift
+  if [ -z "$_dd" ] && [ "$_a" = --json ]; then JSON_FLAG=1; continue; fi
+  [ "$_a" != -- ] || _dd=1
+  set -- "$@" "$_a"
+done
+unset _a _dd
+SCHEMA=$(json_schema "${1:-}" "${2:-}" "${3:-}")
+if [ -n "$JSON_FLAG" ] && [ -z "$SCHEMA" ]; then
+  echo "jsdd ${1:-}${2:+ $2} has no JSON output (the commands that do: docs/machine-output.md)" >&2; exit 2
+fi
+if [ -n "$SCHEMA" ] && { [ -n "$JSON_FLAG" ] || [ "${JSDD_OUTPUT:-text}" = json ]; }; then
+  need_jq
+  JSON=1
+  json_wrap "$SCHEMA" main "$@" || exit $?
+  exit 0
+fi
+main "$@"

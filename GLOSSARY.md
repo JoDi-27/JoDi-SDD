@@ -45,11 +45,13 @@ One line per term, alphabetical. The full reference for statuses, IDs, and file 
 | Priority | On a requirement row: M Must, S Should, C Could, W Won't. |
 | Product agent (`sdd-product`) | The read-only agent that decides product questions in an autonomous run, from the product documents and code only, and classifies each answer as cited, inferred, uncited, or conflict. The charter's `product` setting caps which classes a run acts on. |
 | Product class | What supports a product answer: `cited` (the docs say it), `inferred` (it follows from the principles), `uncited` (nothing covers it; a rule decides), `conflict` (the docs disagree). |
+| Profile | A named, built-in set of settings for an environment, picked with `SDD_PROFILE`. `local` is the default; `cloud` fills in autopilot, JSON output, remote claims, and the unattended doctor checks wherever nobody set a value. |
 | Remote claims | Opt-in mode (`git config jsdd.claims remote`) where claims are refs on the git remote, so people on separate clones see each other's claims. The remote accepts each claim only once. |
 | Requirement (FR-AUTH-02) | A row in `docs/requirements.md` with an ID, a priority, and a source. `FR` functional, `NFR` non-functional. |
 | Requirement (R1, R2, …) | A numbered behaviour inside a spec, in EARS form, tagged with the rows it refines. |
 | Roadmap (`PLAN.md`) | Phases of work, each item tagged with the requirements it delivers. Not a spec's `plan.md`. |
 | Run report (`run-report.md`) | What a run (autopilot or autonomous) did, each decision and product decision it made without a person, and what parked. The pull request links it. |
+| Run result (`run-result.json`) | How a run ended, for scripts: outcome, gate, branch, tasks, commits, and cost, one entry per run. jsdd writes it from disk; the run report is the version for people. |
 | Runtime mode | What happens at every gate. `manual`, where every gate asks, is the default; `autopilot` runs an authored spec to a pull request; `autonomous` works through the queue within a charter. Chosen with `SDD_MODE` among the modes `specs/jsdd.yml` allows. |
 | Session | One Claude Code conversation. Several can work on one project at once. |
 | Skill | A `/jsdd:` command. There are nine. |

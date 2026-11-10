@@ -63,6 +63,16 @@ If most specs would park at the first open question, answer those with `/jsdd:sp
 - Force-push, rewrite history, or merge anything except a converged spec with green CI under `hands-off`.
 - Run `/jsdd:init`, or decide which areas need a baseline. Baselines and spikes run only when the charter lists their type, and only on what the code and docs can answer.
 
+## Running it with nobody at the machine
+
+Everything above happens in a session you started. To run a spec from cron, CI, or a container, use the headless runner:
+
+```bash
+SDD_PROFILE=cloud jsdd auto run -- --permission-mode bypassPermissions
+```
+
+It checks what an unattended run needs (`jsdd auto doctor --unattended`), takes the next spec, runs `/jsdd:auto` with `claude -p`, and afterwards, however the session ended, records the outcome in `run-result.json`, commits it, and pushes the branch. Its exit code says what happened. `--json`, the exit codes, and the event log are described in [Running jsdd from scripts and the cloud](machine-output.md).
+
 ## What it costs
 
 A reviewer that approves a spec or plan is weaker than you doing it: it's the same model, and a fresh context only partly helps. The product agent shares the author's model even in a fresh context, and a well-cited-sounding answer is more convincing than a bare default: the Assumed rows only help if someone reads them. Each reviewer pass and retry spends tokens, and the budgets cap a run but don't make a loose charter cheap. Frozen checks stop a run from weakening a test after the plan is approved. They don't stop it from writing a weak test in the first place; only the reviewer guards against that. Start with `cautious`, a narrow scope, and single runs, and widen them once the run reports show you can trust them.
