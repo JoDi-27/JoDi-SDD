@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.7.11 (2026-11-10)
+
 - Cloud-native runs (roadmap idea 13): the kit can be driven by scripts, cron, CI, or a container with nobody watching. See [docs/machine-output.md](docs/machine-output.md).
 - New `jsdd auto run [<ID> | --loop] [--worktree] [-- <claude flags>]`: the headless runner. It checks what an unattended run needs, picks the next spec (or takes the one given), runs `/jsdd:auto` with `claude -p`, and afterwards, however the session ended, records the result, commits it, and pushes the run branch (never `--force`). It exits with the outcome: 0 done, 4 parked, 5 budget spent, 1 failed, 3 nothing to do. It never picks a permission mode: pass one after `--`.
 - New profiles: `SDD_PROFILE=cloud` fills in what an unattended run needs, but only where nobody set a value: autopilot, JSON output, remote claims, and the unattended doctor checks. An env var wins, then the profile, then `specs/jsdd.yml`. A profile never widens the modes a project allows. `jsdd profile [--explain]` shows each setting and where it came from.
