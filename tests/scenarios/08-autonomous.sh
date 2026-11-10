@@ -105,6 +105,14 @@ as session-b jsdd claim 005 >/dev/null
 expect "005  claimed" auto auto dry-run
 as session-b jsdd release 005 >/dev/null
 
+step "a spec whose run branch is not merged here stays out of the queue"
+git branch -q autonomous/005-which-store
+git switch -q autonomous/005-which-store && echo x >store.txt && git add store.txt && git commit -qm "[005] Spike (auto)" && git switch -q main
+expect "005  its run branch autonomous/005-which-store is not merged here yet" auto auto dry-run
+git branch -q -D autonomous/005-which-store
+q=$(auto auto queue | cut -f1 | paste -sd ' ' -)
+[ "$q" = "001 005 006 007" ] || fail "005 did not come back once its run branch was gone: $q"
+
 step "a loop needs autonomous mode, takes specs one at a time, and stops at specs_per_run"
 refuses jsdd run start --loop
 refuses auto run next

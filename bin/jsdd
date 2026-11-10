@@ -1778,10 +1778,25 @@ cmd_run() {
 # in_list <item> <[a, b]>: the item is in the inline list.
 in_list() { list_items "$2" 2>/dev/null | grep -qx "$1"; }
 
+# open_run_branch <ID>: a run branch of the spec (autonomous/<ID>-* or
+# autopilot/<ID>-*, local or on a remote) that HEAD does not contain yet. A
+# loop must not start the spec again from here: the work waits in that branch's
+# pull request, and this checkout still shows the spec as it was before.
+open_run_branch() {
+  local ref
+  for ref in $(cd "$ROOT" && git for-each-ref --format='%(refname)' "refs/heads/autonomous/$1-*" "refs/heads/autopilot/$1-*" \
+      "refs/remotes/*/autonomous/$1-*" "refs/remotes/*/autopilot/$1-*" 2>/dev/null); do
+    [ "$(cd "$ROOT" && git rev-parse --abbrev-ref HEAD 2>/dev/null)" != "${ref#refs/heads/}" ] || continue
+    if ! (cd "$ROOT" && git merge-base --is-ancestor "$ref" HEAD 2>/dev/null); then
+      ref=${ref#refs/heads/}; echo "${ref#refs/remotes/}"; return
+    fi
+  done
+}
+
 # queue_rows: one tab-separated line per live spec, in the order a loop takes them:
 # id, type, status, take|skip, why (for a skip) or the next step (for a take).
 queue_rows() {
-  local phases types groups r id type st phase deps open tnote parked dir refs ref g why num
+  local phases types groups r id type st phase deps open tnote parked dir refs ref g why num run_branch
   phases=$(config_get autonomous phases); types=$(scope_value types); groups=$(config_get autonomous exclude_groups)
   records | sort | awk -F '\t' '
     { st[$1] = $3; line[NR] = $0; id[NR] = $1 }
@@ -1805,6 +1820,7 @@ queue_rows() {
     elif [ -d "$CLAIMS/$num" ] && ! mine "$num"; then why="claimed $(claim_desc "$num")"
     elif [ -d "$LOCAL_CLAIMS/run-$id" ] && ! CLAIMS="$LOCAL_CLAIMS" mine "run-$id"; then why="another session runs it"
     elif [ "$type" = baseline ] && [ "$st" = draft ] && [ "$open" -gt 0 ]; then why="$open open questions for the owner in a baseline"
+    elif run_branch=$(open_run_branch "$id"); [ -n "$run_branch" ]; then why="its run branch $run_branch is not merged here yet: merge or close its pull request first"
     fi
     if [ -z "$why" ] && [ -n "$groups" ]; then
       for ref in $refs; do
