@@ -1,6 +1,6 @@
 {
   "name": "jsdd",
-  "version": "0.7.11",
+  "version": "0.7.12",
   "description": "Spec-driven development: specify, plan, implement, and verify work as specs in specs/, with spikes run as interviews, claims for parallel sessions, and requirement traceability.",
   "icon": "./icon.png",
   "author": {
