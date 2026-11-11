@@ -20,6 +20,7 @@ s6=$(jsdd new feature "Export"); frontmatter "$s6" phase 1
 printf '\n- **R9** The format is [NEEDS CLARIFICATION: CSV or JSON?]\n' >>"$s6"
 s7=$(jsdd new feature "Share"); frontmatter "$s7" phase 1
 printf '\n- [ ] **AC-9** A person shares a note · check: manual: open the link on a phone\n' >>"$s7"
+printf '%s\n' '## Tasks' '' '- [ ] **T1** Share it · check: `true` → AC-9' '' '- [ ] **T2** Try it → AC-9' '  - check: manual: open the link on a phone' >"$(dirname "$s7")/tasks.md"
 git add -A && git commit -qm "[meta] Specs"
 
 step "the charter fails closed: scope keys only in autonomous, values checked"
@@ -91,7 +92,7 @@ q=$(auto auto queue | cut -f1 | paste -sd ' ' -)
 [ "$q" = "001 005 006 007" ] || fail "the queue is '$q', not '001 005 006 007'"
 out=$(auto auto dry-run)
 for want in "002  refs FR-BILL-01, in autonomous.exclude_groups" "003  phase 2 is not in autonomous.phases" "004  waiting on 001" \
-  "sdd-product answers 1 open questions as far as product: cited allows" "would park at task.manual_check: AC-9" "parks at spike.question" \
+  "sdd-product answers 1 open questions as far as product: cited allows" "would park at task.manual_check: AC-9 T2" "parks at spike.question" \
   "each spec ends at a pull request" "(after specs_per_run: next loop)"; do
   has "$out" "$want" || fail "the dry run lacks: $want. Got:
 $out"
