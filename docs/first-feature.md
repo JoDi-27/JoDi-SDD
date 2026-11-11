@@ -25,7 +25,9 @@ Anything unknown is written as `[NEEDS CLARIFICATION: …]` rather than guessed,
 **4. Plan.** `/jsdd:plan 001` is your approval of the spec. Claude writes the design and a task list, and a reviewer agent in a fresh context checks both against the spec and your project's rules. Each task names what it touches, how it is checked, and the criterion it serves:
 
 ```markdown
-- [ ] **T3** Reject expired reset tokens · `auth/reset.py` · check: `pytest tests/test_reset.py -k expired` → AC-1
+- [ ] **T3** Reject expired reset tokens → AC-1
+  - files: `auth/reset.py`, `tests/test_reset.py`
+  - check: `pytest tests/test_reset.py -k expired`
 ```
 
 **5. Implement.** `/jsdd:implement 001` is your approval of the plan. Claude claims one task at a time, does it, and runs `jsdd done 001 T3`, which runs the task's check and ticks the task only if the check passes. A failing check leaves the task unticked, however finished Claude says it is. Each task is committed with a message that cites it, such as `[001] T3 Reject expired reset tokens`.

@@ -61,7 +61,7 @@ One line per term, alphabetical. The full reference for statuses, IDs, and file 
 | Spike | A spec for answering a question rather than building. A research agent writes a briefing, then asks you only what it can't look up. |
 | Starter | A template file init copies into a project. Never overwritten once it exists. |
 | Status | Where a spec is: `draft`, `approved`, `planned`, `in-progress`, `done`, `blocked`, `dropped`. |
-| Task (T1, T2, …) | A step of half a day at most in `tasks.md`, with its files, its check, and the criterion it serves. `[P]` marks tasks that can run in parallel. |
+| Task (T1, T2, …) | A step of half a day at most in `tasks.md`, with its files, its check, and the criterion it serves. Written as a head line with the checkbox and indented sub-bullets, or as one line when short. `[P]` marks tasks that can run in parallel. |
 | tasks.md | A feature spec's ordered tasks and its evidence table. |
 | Two rounds | A gap that survives two rounds of fixes gets only two options: change the spec, or drop the gap. |
 | Verify | `/jsdd:verify`: checks every criterion and the code against every requirement, then closes the spec or reports gaps. |

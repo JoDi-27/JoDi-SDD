@@ -926,15 +926,68 @@ task_line() {
     }' "$1"
 }
 
-# check_of <task line>: the command in backticks after "check:", or nothing.
-# "check: manual: ..." has no backticks, so it gives nothing.
-check_of() {
-  printf '%s\n' "$1" | awk '{
-    i = index($0, "check:"); if (!i) exit
-    rest = substr($0, i + 6)
-    if (rest ~ /^[[:space:]]*manual:/) exit
-    if (match(rest, /`[^`]+`/)) print substr(rest, RSTART + 1, RLENGTH - 2)
-  }'
+# A task is a block: its head line (the checkbox, the ID, [P], the title, and
+# → AC-n) and, optionally, a body of the lines after it that are indented more
+# deeply than the head's "-". Blank lines inside the body are allowed; the body
+# ends at the first non-blank line indented no deeper than the head. A one-line
+# task has no body and works as it always has.
+#
+# task_body <tasks.md> <Tn>: the line number of the block's last line, then the
+# body's lines (CR and HTML comments removed), or nothing if there is no task.
+task_body() {
+  awk -v t="$2" '
+    function ind(s,   i, c, n) {
+      n = 0
+      for (i = 1; i <= length(s); i++) {
+        c = substr(s, i, 1)
+        if (c == " ") n++; else if (c == "\t") n += 4 - n % 4; else break
+      }
+      return n
+    }
+    { sub(/\r$/, ""); line = $0 }
+    incomment { if (index(line, "-->")) { line = substr(line, index(line, "-->") + 3); incomment = 0 } else next }
+    {
+      while (index(line, "<!--")) {
+        pre = substr(line, 1, index(line, "<!--") - 1); rest = substr(line, index(line, "<!--") + 4)
+        if (index(rest, "-->")) line = pre substr(rest, index(rest, "-->") + 3)
+        else { line = pre; incomment = 1 }
+      }
+    }
+    !found {
+      if (line ~ ("^[[:space:]]*- \\[[ xX]\\] \\*\\*" t "\\*\\*")) { found = 1; head = ind(line); last = NR }
+      next
+    }
+    line ~ /^[[:space:]]*$/ { held[++nh] = line; next }
+    ind(line) <= head { exit }
+    {
+      for (i = 1; i <= nh; i++) body[++nb] = held[i]
+      nh = 0; body[++nb] = line; last = NR
+    }
+    END { if (found) { print last; for (i = 1; i <= nb; i++) print body[i] } }' "$1"
+}
+
+# task_check <tasks.md> <Tn>: the task's check, from its head line ("check:"
+# anywhere on it) or from a body line that is a "- check:" sub-bullet:
+#   cmd<TAB><command>   a command in backticks, which jsdd done runs
+#   manual              "check: manual: <what a person checks>"
+#   none                no check, or one without a command in backticks
+#   many                more than one check, which done and freeze refuse
+check_line_kind='
+  function take(r) {
+    n++
+    if (r ~ /^[[:space:]]*manual:/) kind = "manual"
+    else if (match(r, /`[^`]+`/)) kind = "cmd\t" substr(r, RSTART + 1, RLENGTH - 2)
+    else kind = "none"
+  }
+  NR == 1 { i = index($0, "check:"); if (i) take(substr($0, i + 6)); next }
+  /^[[:space:]]*[-*+][[:space:]]+check:/ { r = $0; sub(/^[[:space:]]*[-*+][[:space:]]+check:/, "", r); take(r) }
+  END { if (n > 1) print "many"; else if (n == 0) print "none"; else print kind }'
+task_check() {
+  local row tab
+  tab=$(printf '\t')
+  row=$(task_line "$1" "$2")
+  [ -n "$row" ] || { echo none; return; }
+  { printf '%s\n' "${row#*"$tab"}"; task_body "$1" "$2" | sed 1d; } | awk "$check_line_kind"
 }
 
 # done: the only way a task gets ticked. Runs the task's check from the
@@ -942,7 +995,7 @@ check_of() {
 # spec has no tasks: its acceptance criteria in spec.md are ticked the same way.
 cmd_done() {
   [ $# -ge 2 ] || { usage >&2; exit 2; }
-  local id dir f t ac="" row tab n line cmd note="" rc tmp crlf frozen
+  local id dir f t ac="" row tab n line cmd kind body last sub note="" rc tmp crlf frozen
   id=$(norm_id "$1")
   case $2 in [Aa][Cc]*) ac=1; t=$(norm_ac "$2") ;; *) t=$(norm_task "$2") ;; esac
   shift 2
@@ -976,7 +1029,11 @@ cmd_done() {
     fi
     echo "$id $t is already ticked" >&2; exit 1 ;;
   esac
-  cmd=$(check_of "$line")
+  kind=$(task_check "$f" "$t"); cmd=""
+  case $kind in
+    many) echo "$id $t has more than one check; keep one (on its line, or one \"- check:\" sub-bullet)" >&2; exit 1 ;;
+    cmd"$tab"*) cmd=${kind#*"$tab"} ;;
+  esac
   # Checks frozen at plan approval (see "freeze") cannot change quietly.
   if [ -z "$ac" ] && [ -f "$dir/checks.lock" ]; then
     frozen=$(lock_get "$dir/checks.lock" "$t")
@@ -1002,17 +1059,26 @@ cmd_done() {
     exit 1
   fi
 
-  # Tick only that line; a manual check keeps its note on the task. A CRLF file
-  # stays CRLF. tr counts the CRs: awk in Git Bash drops them as it reads.
+  # Tick only the head line; a manual check keeps its note on the task: on the
+  # head line of a one-line task, as a "- checked:" sub-bullet after the last
+  # line of a block. A CRLF file stays CRLF. tr counts the CRs: awk in Git Bash
+  # drops them as it reads.
+  body=$(task_body "$f" "$t"); last=${body%%$'\n'*}; sub=""
+  case $body in *$'\n'*)
+    sub=$(printf '%s\n' "$body" | sed 1d | awk 'NF { match($0, /^[[:space:]]*/); print substr($0, 1, RLENGTH); exit }') ;;
+  esac
   tmp="$f.tmp.$$"
   crlf=0; [ "$(tr -cd '\r' <"$f" | wc -c)" -gt 0 ] && crlf=1
-  NOTE="$note" DATE="$(date +%F)" awk -v n="$n" -v crlf="$crlf" '
+  NOTE="$note" DATE="$(date +%F)" SUB="$sub" awk -v n="$n" -v last="${last:-$n}" -v block="$([ "$body" != "$last" ] && echo 1 || echo 0)" -v crlf="$crlf" '
     { sub(/\r$/, "") }
     NR == n {
       sub(/- \[ \]/, "- [x]")
-      if (ENVIRON["NOTE"] != "") $0 = $0 " · checked: " ENVIRON["NOTE"] " (" ENVIRON["DATE"] ")"
+      if (ENVIRON["NOTE"] != "" && !block) $0 = $0 " · checked: " ENVIRON["NOTE"] " (" ENVIRON["DATE"] ")"
     }
-    { printf "%s%s\n", $0, (crlf ? "\r" : "") }' "$f" > "$tmp" && mv "$tmp" "$f"
+    { printf "%s%s\n", $0, (crlf ? "\r" : "") }
+    NR == last && block && ENVIRON["NOTE"] != "" {
+      printf "%s- checked: %s (%s)%s\n", ENVIRON["SUB"], ENVIRON["NOTE"], ENVIRON["DATE"], (crlf ? "\r" : "")
+    }' "$f" > "$tmp" && mv "$tmp" "$f"
   event "$([ -n "$ac" ] && echo ac.done || echo task.done)" "spec=$id" "$([ -n "$ac" ] && echo "ac=$t" || echo "task=$t")" "check=$([ -n "$cmd" ] && echo passed || echo manual)"
   if [ -n "$cmd" ]; then echo "check passed; ticked $id $t"; else echo "ticked $id $t (manual check recorded)"; fi
   [ -n "$ac" ] || claim_mark_done "$id-$t" || exit 1
@@ -2156,15 +2222,20 @@ queue_rows() {
 # would_park <ID> <type> <status>: the gates a run on the spec would park at,
 # from what is on disk now. One line each; nothing when none is known.
 would_park() {
-  local dir open manual
+  local dir open manual t
   dir=$(spec_dir "$1")
   open=$(count '\[NEEDS CLARIFICATION' "$dir/spec.md")
   if [ "$open" -gt 0 ]; then
     if [ "$(gate_policy spec.clarify autonomous)" = park ] || [ "$(scope_value product)" = park ]; then echo "would park at spec.clarify: $open open questions"
     else echo "sdd-product answers $open open questions as far as product: $(scope_value product) allows; the rest park at spec.clarify"; fi
   fi
-  # shellcheck disable=SC2046  # tasks.md is an optional extra argument
-  manual=$(uncomment "$dir/spec.md" $( [ -f "$dir/tasks.md" ] && echo "$dir/tasks.md" ) | grep -Eo '\*\*(T[0-9]+|AC-[0-9]+)\*\*.*check: manual' | grep -Eo '^\*\*(T[0-9]+|AC-[0-9]+)' | tr -d '*' | paste -sd ' ' - || true)
+  manual=$(uncomment "$dir/spec.md" | grep -Eo '\*\*(T[0-9]+|AC-[0-9]+)\*\*.*check: manual' | grep -Eo '^\*\*(T[0-9]+|AC-[0-9]+)' | tr -d '*' | paste -sd ' ' - || true)
+  # A task's manual check may be on its line or in its body.
+  if [ -f "$dir/tasks.md" ]; then
+    for t in $(task_rows 000 "$dir/tasks.md" | awk '{ print $1 }'); do
+      if [ "$(task_check "$dir/tasks.md" "$t")" = manual ]; then manual="${manual:+$manual }$t"; fi
+    done
+  fi
   [ -z "$manual" ] || [ "$(gate_policy task.manual_check autonomous)" != park ] || echo "would park at task.manual_check: $manual needs a person"
   if [ "$2" = spike ] && [ "$(gate_policy spike.question autonomous)" = park ]; then echo "parks at spike.question if a question needs the owner"; fi
   if [ "$2" = feature ] && [ "$3" = draft ] && [ "$(gate_policy spec.approve autonomous)" = park ]; then echo "would park at spec.approve"; fi
@@ -2652,12 +2723,17 @@ run_commit_push() {
 # a task the lock does not know, until freeze records it again. A changed check
 # needs --accept and a Deviation row in plan.md that names the task.
 
-# task_checks <tasks.md>: one line per task: ID, TAB, its check command or "manual".
+# task_checks <tasks.md>: one line per task: ID, TAB, its check command or
+# "manual". Fails on a task with more than one check.
 task_checks() {
-  local t row cmd tab
+  local t kind cmd tab
   tab=$(printf '\t')
   for t in $(task_rows 000 "$1" | awk '{ print $1 }'); do
-    row=$(task_line "$1" "$t"); cmd=$(check_of "${row#*"$tab"}")
+    kind=$(task_check "$1" "$t"); cmd=""
+    case $kind in
+      many) echo "$t has more than one check; keep one (on its line, or one \"- check:\" sub-bullet)" >&2; return 1 ;;
+      cmd"$tab"*) cmd=${kind#*"$tab"} ;;
+    esac
     printf '%s\t%s\n' "$t" "${cmd:-manual}"
   done
 }

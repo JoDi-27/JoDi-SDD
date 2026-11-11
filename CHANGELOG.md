@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Tasks can be blocks: a head line with the checkbox, the ID, `[P]`, a short title, and `→ AC-n`, then indented sub-bullets for the files, the check (`- check: …`), and notes. One-line tasks still work, and both forms can be mixed in one `tasks.md`. `jsdd done` reads the check from the body. With `--manual`, the note goes in a `- checked:` sub-bullet under the block. A task with more than one check is refused by `done` and `freeze`, and the autonomous dry run sees manual checks in a body. The template, `/jsdd:plan`, and the reviewer now write tasks as blocks, with a blank line between them, so ticks on neighboring tasks in two worktrees merge without a conflict. A check that needs pipes, `$(...)`, or several commands goes in a script the check runs.
+
 ## 0.7.11 (2026-11-10)
 
 - Cloud-native runs (roadmap idea 13): the kit can be driven by scripts, cron, CI, or a container with nobody watching. See [docs/machine-output.md](docs/machine-output.md).
