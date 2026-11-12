@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.8.0 (2026-11-12)
+
 - The project's whole test suite is now a gate before a spec closes or its pull request leaves draft. Task checks are narrow, so a change could pass every check, converge, and open a ready pull request that broke an existing test no task named, leaving CI to be the first full run.
   - New `jsdd suite <ID>` runs the project's test command from the repository root and records the result, with the commit it ran on, in `suite-result.txt` in the spec folder. `jsdd suite <ID> --check` says whether a pass is recorded for the code as it is now. A code change makes the pass stale; a change to the kit's own documents does not. `jsdd suite --command` prints the command and where it came from.
   - The command is the new `test_command` key in `specs/jsdd.yml`, else the first command in backticks on the constitution's `Test command:` line.
