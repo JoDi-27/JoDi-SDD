@@ -16,8 +16,8 @@ d=$(cd "$(dirname "$file")" 2>/dev/null && pwd -P) || d=$(dirname "$file")
 r=$(cd "$root" 2>/dev/null && pwd -P) || r=$root
 rel=${d#"$r"}/$(basename "$file"); rel=${rel#/}
 case $rel in
-  specs/constitution.md|docs/intent.md|specs/jsdd.yml|specs/*/checks.lock) ;;
+  specs/constitution.md|docs/intent.md|specs/jsdd.yml|specs/*/checks.lock|specs/*/suite-result.txt) ;;
   *) exit 0 ;;
 esac
-echo "A run never edits $rel: the constitution, the intent, the mode settings (the charter), and frozen checks belong to people. If the run cannot go on without changing it, park the spec: jsdd park <ID> <gate> \"<reason>\"." >&2
+echo "A run never edits $rel: the constitution, the intent, the mode settings (the charter), and frozen checks belong to people, and only jsdd suite writes suite-result.txt. If the run cannot go on without changing it, park the spec: jsdd park <ID> <gate> \"<reason>\"." >&2
 exit 2

@@ -54,7 +54,7 @@ flowchart LR
   blocked -.->|"/jsdd:plan<br/>(resume: amendment)"| planned
 ```
 
-`/jsdd:verify` checks each acceptance criterion and also reads the code against each requirement, looking for requirements that are missing or only partly built, behavior no requirement asks for, and drift from the plan. It writes what it finds to `verify-report.md` in the spec folder, with a numbered proposed action for each gap (G1, G2, …), and asks whether to fix them. Verify changes no tasks, plan, or spec. If you approve, the spec goes back to `approved` (or `draft`, for a spec change; see below), and `/jsdd:plan` plans the gaps as an **amendment**: a numbered section of the plan's Amendments (A1, A2, …) saying what each gap became, and follow-up tasks in `tasks.md` under `### A<n> · Follow-up from verify round <r>`, each naming its gap. The reviewer checks the amendment, then `/jsdd:implement` builds it and `/jsdd:verify` checks again. A gap fixed by changing the spec goes through `/jsdd:specify`, not the plan: the plan was derived from the spec, so it never edits it. If you approve a spec change, the spec goes back to `draft`; `/jsdd:specify <ID>` revises it with you, and `/jsdd:plan <ID>` then approves the revised spec and plans what it means for the build as an amendment, never a new plan. When a gap comes back after its fix was built, two rounds of fixes have not closed it, so the spec or its check is likely wrong: verify then offers only a spec change or dropping the gap. If you decline, only the report is kept and the spec is `blocked`. It stays blocked until you run `/jsdd:plan <ID>` (your approval to fix the gaps after all) or drop it.
+`/jsdd:verify` runs the project's whole test suite (`jsdd suite <ID>`, see [The test command](#the-test-command)), checks each acceptance criterion, and also reads the code against each requirement, looking for requirements that are missing or only partly built, behavior no requirement asks for, and drift from the plan. It writes what it finds to `verify-report.md` in the spec folder, with a numbered proposed action for each gap (G1, G2, …), and asks whether to fix them. Verify changes no tasks, plan, or spec. If you approve, the spec goes back to `approved` (or `draft`, for a spec change; see below), and `/jsdd:plan` plans the gaps as an **amendment**: a numbered section of the plan's Amendments (A1, A2, …) saying what each gap became, and follow-up tasks in `tasks.md` under `### A<n> · Follow-up from verify round <r>`, each naming its gap. The reviewer checks the amendment, then `/jsdd:implement` builds it and `/jsdd:verify` checks again. A gap fixed by changing the spec goes through `/jsdd:specify`, not the plan: the plan was derived from the spec, so it never edits it. If you approve a spec change, the spec goes back to `draft`; `/jsdd:specify <ID>` revises it with you, and `/jsdd:plan <ID>` then approves the revised spec and plans what it means for the build as an amendment, never a new plan. When a gap comes back after its fix was built, two rounds of fixes have not closed it, so the spec or its check is likely wrong: verify then offers only a spec change or dropping the gap. If you decline, only the report is kept and the spec is `blocked`. It stays blocked until you run `/jsdd:plan <ID>` (your approval to fix the gaps after all) or drop it.
 
 | Status | Meaning | Set by |
 | --- | --- | --- |
@@ -67,6 +67,19 @@ flowchart LR
 | `dropped` | Will not be done; the reason is in the spec's changelog | anyone |
 
 Each step stops for human review before the next one starts. The human gates are simply running the next command.
+
+### The test command
+
+Task checks are narrow on purpose: the tests that prove one task's acceptance criteria. So a change can pass every check and still break a test no task named, say an existing test that pins the full list of an endpoint's parameters. `/jsdd:verify` closes that gap by running the project's whole suite, the command CI runs, with `jsdd suite <ID>`, and a failing test is a gap like any other. The result is recorded in `suite-result.txt` in the spec folder, with the commit it ran on; a feature closes only on a pass for its code as it is now (`jsdd suite <ID> --check`), and changing the code afterwards makes the pass stale. The kit's own documents (`specs/`, `docs/requirements.md`, `docs/decisions.md`, `docs/capabilities/`, `PLAN.md`, `BACKLOG.md`) can change without that.
+
+The command is the first one in backticks on the `Test command:` line of `specs/constitution.md`'s Project specifics, which `/jsdd:init` asks you for. To set it where scripts can read it, add `test_command` to `specs/jsdd.yml`, which wins over the constitution:
+
+```yaml
+version: 1
+test_command: "./mvnw -B verify"   # the whole suite, as CI runs it
+```
+
+`jsdd suite --command` prints the command in use and where it came from. Both places belong to people: a run cannot change them.
 
 ### Spikes
 
@@ -179,14 +192,16 @@ Two approvals, nothing in between: you approve the spec by starting the run, and
 2. With `SDD_MODE=autopilot`, run `/jsdd:auto <ID>`. It commits the spec, moves to a branch (`autopilot/<ID>-<slug>`) if you are on the main branch, and starts.
 3. It plans the spec, and the `sdd-reviewer` approves the plan: an autopilot plan has a command check for every task and AC, and none that passes before the work is done. The checks are then frozen (`checks.lock`).
 4. It implements every task, ticking each only when its check passes, one commit per task. A check that keeps failing gets `attempts_per_task` tries.
-5. It verifies. Gaps whose fix is code with a check, or a harmless Deviation the reviewer recommends, are approved and built, then verified again. Converged closes the spec.
-6. It writes `run-report.md` in the spec folder, pushes the branch, and opens a pull request whose body `jsdd pr <ID>` writes: the requirements, the evidence, the deviations, and every decision made without you.
+5. It verifies, running the project's whole test suite as well as each AC's check. Gaps whose fix is code with a check (a test the suite broke, say), or a harmless Deviation the reviewer recommends, are approved and built, then verified again. Converged closes the spec.
+6. It writes `run-report.md` in the spec folder, pushes the branch, and opens a pull request whose body `jsdd pr <ID>` writes: the requirements, the evidence, the full suite's result, the deviations, and every decision made without you. The pull request is a draft unless `jsdd pr <ID> --ready` passes: the spec is done, not parked, and the full suite passed on its code. A run whose spec is done without that pass ends `failed`, and `jsdd auto run` turns a ready pull request back into a draft.
 
 What a machine cannot settle **parks** the spec instead of being guessed: a spec change, a manual check, a product choice between options, a gap that survives two rounds, a check that still fails, something only a person can do. A parked spec keeps its status, says why in its frontmatter (`parked:`) and changelog, shows under "Waiting for you" on the board, and `jsdd next` skips it. The run still ends with a **draft** pull request saying what waits for you. Settle it, run `jsdd unpark <ID>`, and `/jsdd:auto <ID>` again continues on the same branch.
 
-Guardrails: every decision the run makes is written as `auto: <gate>` with what passed it, never as yours; `jsdd done` refuses a task whose check changed since the plan was approved, unless a Deviation names it and `jsdd freeze <ID> --accept <Tn>` records it; a hook blocks edits to `specs/constitution.md`, `docs/intent.md`, `specs/jsdd.yml`, and `checks.lock` during a run; the run never force-pushes, and autopilot never merges. A Stop hook keeps the session going while the run has work left and is making progress, and lets it stop when it is parked, out of time, or stuck.
+Guardrails: every decision the run makes is written as `auto: <gate>` with what passed it, never as yours; `jsdd done` refuses a task whose check changed since the plan was approved, unless a Deviation names it and `jsdd freeze <ID> --accept <Tn>` records it; a hook blocks edits to `specs/constitution.md`, `docs/intent.md`, `specs/jsdd.yml`, `checks.lock`, and `suite-result.txt` during a run; the run never force-pushes, and autopilot never merges. A Stop hook keeps the session going while the run has work left and is making progress, and lets it stop when it is parked, out of time, or stuck.
 
-The run cannot answer permission prompts. Give the session a permission mode that does not prompt for file edits, your build and test commands, `git`, and `gh`; otherwise the run stalls at the first prompt. `jsdd auto doctor` checks it and prints the fix.
+The run cannot answer permission prompts. Give the session a permission mode that does not prompt for file edits, your build and test commands, `git`, and `gh`; otherwise the run stalls at the first prompt. `jsdd auto doctor` checks it and prints the fix, and checks that a test command is set.
+
+The full suite runs at least once per verification round, and its time counts against `wall_time_hours`. For a suite that takes most of an hour, raise the budget to match; `jsdd suite` prints how long each run took, and the run report's Timeline records it.
 
 ### Autonomous
 
@@ -301,6 +316,8 @@ jsdd mode --explain                  # the runtime mode, and what happens at eac
 jsdd gate plan.approve               # one gate's policy in the current mode: ask, auto, or park
 jsdd park 003 spec.change "R2 contradicts FR-AUTH-05"   # park a spec at a gate; jsdd unpark 003 puts it back
 jsdd freeze 003                      # record each task's check in checks.lock; done refuses a changed one
+jsdd suite 003                       # run the project's whole test suite on 003's code and record the result
+jsdd suite 003 --check               # whether a pass is recorded for the code as it is now
 jsdd pr 003                          # a pull request body from the spec, evidence, deviations, and run report
 jsdd auto dry-run                    # what an autonomous loop would take, and where each spec would park
 jsdd auto doctor                     # what an unattended run still needs, with the fix for each

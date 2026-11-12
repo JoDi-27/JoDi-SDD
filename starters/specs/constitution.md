@@ -22,7 +22,7 @@ Example: - **P1 Tenants are isolated.** Every record belongs to one tenant, and 
 
 What the kit's skills and the reviewer need to know about this project.
 
-- **Test command:** `make test` <!-- the command that runs the whole suite; plans use it in task checks -->
+- **Test command:** `make test` <!-- the command that runs the whole suite, as CI does. /jsdd:verify runs it (jsdd suite) before a spec closes; task checks use narrower commands. test_command in specs/jsdd.yml, if set, wins over this line. -->
 
 ### Architecture checklist
 
