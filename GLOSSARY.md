@@ -22,7 +22,7 @@ One line per term, alphabetical. The full reference for statuses, IDs, and file 
 | Claim | A lock a session takes on a spec or task before working on it, so parallel sessions don't collide. Lives in `.git/sdd-claims`, never committed. With remote claims, it is a ref under `refs/sdd-claims/` on the git remote instead. |
 | Commit message format | `[003] T3 …` for a task, `[003] …` for a spec, `[meta] …` for housekeeping. The commit hook rejects anything else. |
 | Constitution (`specs/constitution.md`) | The rules every plan is checked against: the kit's engineering articles plus your project's principles, test command, and architecture rules. |
-| Converged | The verdict that closes a spec: every criterion passes, the code matches every requirement, nothing extra, no unrecorded deviation. |
+| Converged | The verdict that closes a spec: every criterion passes, the full suite passes (features), the code matches every requirement, nothing extra, no unrecorded deviation. |
 | Coverage | `jsdd coverage`: each requirement with the specs that cover it. A requirement is done when every spec covering it is done. |
 | Decision (DEC-nn, ND-nn) | A row in `docs/decisions.md`. `ND` while open, `DEC` once settled. |
 | Deviation | A recorded difference between the plan and what was built, logged in `plan.md`. |
@@ -31,6 +31,7 @@ One line per term, alphabetical. The full reference for statuses, IDs, and file 
 | Feature | A spec for building something. Goes through specify, plan, implement, verify. |
 | Fresh context | A subagent that never saw the session that wrote the work, so it judges only what is on disk. |
 | Frozen check | A task's check as recorded in `checks.lock` when a run's plan was approved. `jsdd done` refuses a task whose check changed, unless a Deviation names it. |
+| Full suite | The project's whole test command (`test_command` in `specs/jsdd.yml`, else the constitution's Test command), which `/jsdd:verify` runs with `jsdd suite` before a feature closes, because task checks are narrow. Its result is in `suite-result.txt`; a feature closes, and its pull request leaves draft, only on a pass for its code as it is now. |
 | Gap (G1, G2, …) | Something verification found that the code or spec doesn't satisfy, with a proposed fix, in `verify-report.md`. |
 | Gate | A named point where a skill waits for a person, like `spec.approve` or `verify.gaps`. The runtime mode says whether it asks, passes on its own, or parks. |
 | Hook | A script Claude Code runs on its own: prints the board, regenerates `STATUS.md`, blocks commits without a spec ID, warns about held claims. Loads at session start. |

@@ -143,7 +143,7 @@ The same with text or JSON output, for every command:
 ```
 
 - **`outcome`** is one of `done`, `merged`, `parked`, `budget`, `failed`, or `noop` (nothing committed beyond the spec).
-- **How `outcome` is decided.** Without `--outcome`: the spec is `done` → `done`; it has `parked:` → `parked`; the run's wall time is spent → `budget`; no commits beyond the spec → `noop`; otherwise `failed`.
+- **How `outcome` is decided.** Without `--outcome`: the spec is `done` → `done`, unless it is a feature with no fresh pass of the full suite (`jsdd suite <ID> --check`), which is `failed` with `reason` saying why; it has `parked:` → `parked`; the run's wall time is spent → `budget`; no commits beyond the spec → `noop`; otherwise `failed`.
 - **What the other fields hold.** `commits` counts the branch's commits since the main branch. `assumed` lists the Assumed rows in `docs/decisions.md` whose Spec column names the spec.
 - **One entry per session.** Writing again from the same session updates its entry and keeps its outcome. A later run on the same spec adds `"n": 2`.
 - **No pull request URL in the file.** It is committed before the pull request exists. `jsdd run result <ID> --json` looks the URL up with `gh`.
@@ -165,7 +165,8 @@ With `JSDD_EVENTS=<file>`, every jsdd command that changes state appends one JSO
 | `task.done`, `ac.done` | `spec`, `task` or `ac`, `check` (`passed` or `manual`) |
 | `freeze` | `spec`, `tasks` |
 | `park`, `unpark` | `spec`, `gate`, `reason` |
-| `session.start`, `session.end`, `pr` (from `jsdd auto run`) | `spec`, `prompt`, `exit`, `cost_usd`, `url` |
+| `suite` | `spec`, `result` (`pass` or `fail`), `exit`, `seconds` |
+| `session.start`, `session.end`, `pr`, `pr.draft` (from `jsdd auto run`) | `spec`, `prompt`, `exit`, `cost_usd`, `url`, `reason` |
 
 Every transition in a run goes through the jsdd CLI, so the file is a full log of the run. `jsdd auto run` turns events on for its own runs and puts the file in its run folder.
 
@@ -184,9 +185,10 @@ jsdd auto run [<ID> | --loop] [--worktree] [--json] [-- <claude flags>]
    - claims are remote, and a probe can push and delete a ref under `refs/sdd-claims/`
    - `origin` is set and `gh` works, unless `pr.open` parks
    - the permission mode passed after `--` won't prompt
+   - a test command is set (`test_command` in `specs/jsdd.yml`, or the constitution's Test command), which this check needs in every session, not only unattended ones
 2. **Pick.** Take the given ID, or the first spec in `jsdd auto queue`. With none, exit 3 within seconds.
 3. **Run.** `claude -p "/jsdd:auto <ID>" --session-id <uuid> --output-format stream-json --verbose <your flags>`, with `SDD_MODE`, `SDD_CLAIMS`, `JSDD_SESSION_ID`, `JSDD_EVENTS`, and `JSDD_OUTPUT=text` exported. `JSDD_CLAUDE` names another command to run instead of `claude`; the scenario tests use a stub.
-4. **Reconcile.** If the run is still open when the session exits, write its result (`failed` when the session failed and nothing better is on disk), and end it. Then commit the spec folder as `[<ID>] Run result` and push the branch, never with `--force` and never the main branch.
+4. **Reconcile.** If the run is still open when the session exits, write its result (`failed` when the session failed and nothing better is on disk), and end it. Then commit the spec folder as `[<ID>] Run result` and push the branch, never with `--force` and never the main branch. If the branch has a pull request ready for review and `jsdd pr <ID> --ready` fails (the spec is not done, is parked, or has no fresh pass of the full suite), turn it back into a draft with `gh pr ready --undo`.
 5. **Exit** with the outcome's code: `done`, `merged`, and `noop` 0; `parked` 4; `budget` 5; `failed` 1.
 
 The session's stream and events are kept under `.git/jsdd-runs/<session>/`.

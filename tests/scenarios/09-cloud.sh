@@ -13,7 +13,7 @@ for t in Notes Export Import; do jsdd new feature "$t" >/dev/null; done
 jsdd new spike "Which store" >/dev/null
 jsdd new feature "Formats" >/dev/null
 printf '\n[NEEDS CLARIFICATION: CSV or JSON?]\n' >>specs/005-formats/spec.md
-printf 'version: 1\nmodes: [manual, autopilot]\nclaims: remote\n' >specs/jsdd.yml
+printf 'version: 1\nmodes: [manual, autopilot]\nclaims: remote\ntest_command: "test ! -f broken.txt"\n' >specs/jsdd.yml
 git add -A && git commit -qm "[meta] Specs"
 git clone -q --bare . "$TMP/origin.git"
 git remote add origin "$TMP/origin.git"
@@ -115,8 +115,11 @@ slug=$(basename "$(ls -d specs/"$id"-*)")
 git switch -q -c "autopilot/$slug"
 echo "$id" >"work-$id.txt" && git add "work-$id.txt" && git commit -qm "[$id] T1 Work"
 case $STUB in
-  done) sed -i.bak 's/^status:.*/status: done/' "specs/$slug/spec.md" && rm "specs/$slug/spec.md.bak"
-        git commit -qam "[$id] Verify" ;;
+  done|red)
+        [ "$STUB" = done ] || { echo x >broken.txt && git add broken.txt && git commit -qm "[$id] T2 Break a test"; }
+        jsdd suite "$id" >/dev/null 2>&1 || true
+        sed -i.bak 's/^status:.*/status: done/' "specs/$slug/spec.md" && rm "specs/$slug/spec.md.bak"
+        git add -A && git commit -qm "[$id] Verify" ;;
   park) jsdd park "$id" spec.clarify "a person picks the format" >/dev/null && git commit -qam "[$id] Park" ;;
   crash) exit 1 ;;
 esac
@@ -124,10 +127,20 @@ jsdd run result "$id" --write >/dev/null && git add -A && git commit -qm "[$id] 
 jsdd run end "$id" >/dev/null
 echo '{"type":"result","total_cost_usd":1.25,"num_turns":12,"is_error":false,"session_id":"'"$JSDD_SESSION_ID"'"}'
 STUB
-printf '#!/usr/bin/env bash\ncase "$1 $2" in "auth status") exit 0 ;; esac\nexit 0\n' >"$TMP/bin/gh"
+# The stub gh: signed in; with $GH_PR set, the branch has that ready pull request, and --undo is logged.
+cat >"$TMP/bin/gh" <<'STUB'
+#!/usr/bin/env bash
+case "$1 $2" in
+  "auth status") exit 0 ;;
+  "pr list") [ -z "${GH_PR:-}" ] || echo "$GH_PR" ;;
+  "pr view") echo false ;;
+  "pr ready") printf '%s\n' "$*" >>"$GH_LOG" ;;
+esac
+exit 0
+STUB
 chmod +x "$TMP/bin/claude" "$TMP/bin/gh"
 PATH=$TMP/bin:$PATH   # lib.sh adds it only outside Windows; the stubs need it everywhere
-export KIT STUB_ARGS="$TMP/claude.args" CLAUDE_CODE_OAUTH_TOKEN=test-token
+export KIT STUB_ARGS="$TMP/claude.args" CLAUDE_CODE_OAUTH_TOKEN=test-token GH_LOG="$TMP/gh.log"
 run() { SDD_PROFILE=cloud "$KIT/bin/jsdd" auto run "$@" -- --permission-mode bypassPermissions; }
 
 step "auto run: a spec to done, its result committed and pushed, exit 0"
@@ -153,6 +166,15 @@ ok "$r" '.runs[-1].outcome == "failed" and .runs[-1].commits >= 1' "the crashed 
 [ -z "$(SDD_CLAIMS=local jsdd run active)" ] || fail "the crashed run is still open"
 git switch -q main
 
+step "auto run: done but the full suite fails: exit 1, and a ready pull request goes back to draft"
+tid=$(basename "$(dirname "$(jsdd new feature "Tags")")" | cut -c1-3)
+git add -A && git commit -qm "[$tid] Spec" && git push -q origin main
+out=$(STUB=red GH_PR=https://example.com/pr/7 run "$tid") && fail "a run whose full suite failed exited 0: $out"
+ok "$out" '.data.outcome == "failed" and (.data.result.reason | test("full test suite"))' "the red run's output is wrong"
+grep -q "pr ready https://example.com/pr/7 --undo" "$GH_LOG" || fail "the ready pull request was not turned back into a draft"
+grep -q '"event":"pr.draft"' "$(printf '%s' "$out" | jq -r .data.logs.events)" || fail "no pr.draft event"
+git switch -q main
+
 step "auto run: nothing to do exits 3; a setup problem exits 2 before any session"
 rc 3 env SDD_PROFILE=cloud "$KIT/bin/jsdd" auto run -- --permission-mode bypassPermissions
 rm -f "$STUB_ARGS"
@@ -160,11 +182,11 @@ rc 2 env -u CLAUDE_CODE_OAUTH_TOKEN SDD_PROFILE=cloud "$KIT/bin/jsdd" auto run 0
 [ ! -f "$STUB_ARGS" ] || fail "claude started although doctor failed"
 
 step "auto run --worktree: the checkout in use is not touched"
-jsdd new feature "Search" >/dev/null && git add -A && git commit -qm "[006] Spec" && git push -q origin main
+jsdd new feature "Search" >/dev/null && git add -A && git commit -qm "[007] Spec" && git push -q origin main
 echo mine >scratch.txt
-out=$(STUB=done SDD_PROFILE=cloud "$KIT/bin/jsdd" auto run 006 --worktree -- --permission-mode bypassPermissions) || fail "the worktree run failed: $out"
+out=$(STUB=done SDD_PROFILE=cloud "$KIT/bin/jsdd" auto run 007 --worktree -- --permission-mode bypassPermissions) || fail "the worktree run failed: $out"
 ok "$out" '.data.outcome == "done"' "the worktree run did not finish"
 [ "$(git rev-parse --abbrev-ref HEAD)" = main ] && [ -f scratch.txt ] || fail "the worktree run changed this checkout"
-git ls-remote --exit-code -q origin refs/heads/autopilot/006-search >/dev/null || fail "the worktree run did not push"
+git ls-remote --exit-code -q origin refs/heads/autopilot/007-search >/dev/null || fail "the worktree run did not push"
 [ "$(git worktree list | wc -l | tr -d ' ')" = 1 ] || fail "the worktree was left behind: $(git worktree list)"
 rm scratch.txt

@@ -57,7 +57,8 @@ If most specs would park at the first open question, answer those with `/jsdd:sp
 ## What a run never does
 
 - Tick a task or criterion without its check passing, or change a check after the plan was approved, unless the reviewer accepts a recorded Deviation.
-- Edit `specs/constitution.md`, `docs/intent.md`, `specs/jsdd.yml`, or `checks.lock` (a hook blocks it), or change the priority of a Must requirement.
+- Edit `specs/constitution.md`, `docs/intent.md`, `specs/jsdd.yml`, `checks.lock`, or `suite-result.txt` (a hook blocks it), or change the priority of a Must requirement.
+- Close a feature, or open a pull request ready for review, without a pass of the project's whole test suite (`jsdd suite`) on the code it ends with. Verification runs it; a failing test becomes a gap the run fixes, and one that also fails on the main branch parks. The suite's time counts against `wall_time_hours`. The command is `test_command` in `specs/jsdd.yml`, else the constitution's Test command; `jsdd auto doctor` checks it is set.
 - Act on a product answer beyond the charter's `product` class: it parks, with the agent's answer in the reason.
 - Change what a spec asks for, except under `hands-off`, where `sdd-product` decides spec changes from verification. Narrowing or dropping a Must always parks.
 - Force-push, rewrite history, or merge anything except a converged spec with green CI under `hands-off`.

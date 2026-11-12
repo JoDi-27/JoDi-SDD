@@ -152,8 +152,14 @@ Usage: jsdd <command>
   freeze <ID> [--accept <Tn>...]
                                 Record each task's check in checks.lock; done then refuses a
                                 task whose check changed. --accept needs a Deviation naming it
-  pr <ID> [--title]             Print a pull request body (or title) from the spec, evidence,
-                                deviations, and run report
+  suite <ID> [--check]          Run the project's full test command (test_command in specs/jsdd.yml,
+                                else the constitution's Test command) and record the result in
+                                the spec folder; --check only says whether a pass is recorded for
+                                the code as it is now (exit 0) or not (exit 1)
+  suite --command               Print the project's test command and where it came from
+  pr <ID> [--title | --ready]   Print a pull request body (or title) from the spec, evidence,
+                                deviations, and run report; --ready exits 0 only when the pull
+                                request may leave draft: done, not parked, full suite passed
 
 Scripts: --json on next, status, mode, charter, profile, auto queue|dry-run|doctor|run,
 and run status|result prints one JSON document, also on failure; JSDD_OUTPUT=json does
@@ -1539,9 +1545,10 @@ config_errors() {
               fi ;;
             default) default=$v; dline=$n ;;
             claims) case $v in local|remote) ;; *) echo "$f:$n: claims: '$v' is not one of local, remote" ;; esac ;;
+            test_command) ;;
             *)
               if [ -n "$(mode_field "$k" 2)" ]; then echo "$f:$n: '$k' is a section: put its gates on the lines below it"
-              else echo "$f:$n: unknown key '$k' (top-level keys: version, modes, default, claims, and one section per mode)"; fi ;;
+              else echo "$f:$n: unknown key '$k' (top-level keys: version, modes, default, claims, test_command, and one section per mode)"; fi ;;
           esac
         elif [ "$k" = preset ] || [ -n "$(scope_row "$k")" ]; then
           if [ "$s" != autonomous ]; then echo "$f:$n: $k belongs in the autonomous section only"
@@ -2255,7 +2262,7 @@ queue_json() {
 # id, ok|warn|fix, what was found, the fix. --unattended (or the cloud profile)
 # adds the checks a run with nobody at the machine needs, as FIX.
 doctor_checks() {
-  local f mode_ok perm="" un="${JSDD_UNATTENDED:-}" sha probe
+  local f mode_ok perm="" un="${JSDD_UNATTENDED:-}" sha probe row
   DOC=""
   d_add() { DOC="$DOC$1	$2	$3	${4:-}
 "; }
@@ -2267,6 +2274,12 @@ doctor_checks() {
   if [ -n "$CONFIG_ERRORS" ]; then d_bad config "$MODES_REL is invalid" "$(printf '%s' "$CONFIG_ERRORS" | head -3 | paste -sd ';' -) (all of them: jsdd mode --check)"
   elif [ ! -f "$MODES_FILE" ]; then d_bad config "no $MODES_REL" "run /jsdd:auto setup, or write: version: 1 / modes: [manual, autonomous] / autonomous: / preset: cautious"
   else d_ok config "$MODES_REL is valid"
+  fi
+  if row=$(suite_command) && [ -n "$row" ]; then
+    d_ok test_command "test command: \`${row%%	*}\` (from ${row#*	}); verify runs it before a spec closes"
+  else
+    d_bad test_command "no test command, so verify cannot run the full suite and every run parks before its pull request" \
+      "set test_command: \"<the command that runs every test>\" in $MODES_REL, or a Test command line in specs/constitution.md's Project specifics"
   fi
   mode_ok=1
   case $MODE in
@@ -2456,7 +2469,7 @@ result_entry() {
 # result_write <ID> [--outcome <o>] [--claude <result event file>] [--session-failed]
 result_write() {
   local id=$1 outcome="" cfile="" sfail="" dir f spec st parked gate="" reason="" branch base mb="" commits=0 work=0
-  local prog ticked total since="" started="" old entry claude=null existing assumed hours
+  local prog ticked total since="" started="" old entry claude=null existing assumed hours why
   shift
   while [ $# -gt 0 ]; do
     case $1 in
@@ -2498,6 +2511,10 @@ result_write() {
     [ -z "$sfail" ] || [ "$outcome" != noop ] || outcome=failed
   fi
   if [ "$outcome" = parked ] && [ -z "$gate" ] && [ -n "$parked" ]; then gate=${parked%%:*}; reason=${parked#*: }; fi
+  # A feature is not done until the project's whole suite passed on its code.
+  if [ "$outcome" = done ] && [ "$(fm "$spec" type)" = feature ] && ! why=$(suite_state "$id"); then
+    outcome=failed; reason="full test suite: $why"
+  fi
   if [ -n "$cfile" ] && [ -s "$cfile" ]; then
     claude=$(jq -c '{ cost_usd: (.total_cost_usd // null), turns: (.num_turns // null), is_error: (.is_error // null), session_id: (.session_id // null) }' "$cfile" 2>/dev/null) || claude=null
   fi
@@ -2572,7 +2589,7 @@ loop_result_write() {
 
 auto_run() {
   local id="" loop="" wt="" a perm="" rundir log res rc=0 out prompt claude dir outcome code branch pushed=false pr="" entry
-  local wtdir base f open failed="" ids
+  local wtdir base f open failed="" ids why
   while [ $# -gt 0 ]; do
     case $1 in
       --loop) loop=1 ;;
@@ -2687,6 +2704,12 @@ auto_run() {
     pr=$(cd "$ROOT" && gh pr list --head "$branch" --state all --json url -q '.[0].url' 2>/dev/null) || pr=""
   fi
   [ -z "$pr" ] || event pr "spec=$id" "url=$pr"
+  # The last word on a ready pull request: one that may not leave draft goes back to draft.
+  if [ -n "$pr" ] && ! why=$("$0" pr "$id" --ready 2>&1) && \
+    [ "$(cd "$ROOT" && gh pr view "$pr" --json isDraft -q .isDraft 2>/dev/null)" = false ]; then
+    if (cd "$ROOT" && gh pr ready "$pr" --undo >/dev/null 2>&1); then event pr.draft "spec=$id" "url=$pr" "reason=$why"
+    else echo "could not turn $pr back into a draft: $why" >&2; fi
+  fi
   case $outcome in done|merged|noop) code=0 ;; parked) code=4 ;; budget) code=5 ;; *) code=1 ;; esac
   if [ -n "$JSON" ]; then
     jq -n -c --arg id "$id" --arg o "$outcome" --argjson code "$code" --arg branch "$branch" --argjson pushed "$pushed" \
@@ -2780,7 +2803,119 @@ CHECKS
   echo "froze the checks of $id: $total tasks, $added new, in ${lock#"$ROOT"/}"
 }
 
+# --- the full test suite ---------------------------------------------------
+# Task checks are narrow on purpose (one test class, one script), so a change
+# can pass every check and still break a test no task named. "suite" runs the
+# project's whole test command from the repository root and records the result
+# in the spec folder (suite-result.txt). /jsdd:verify needs a fresh pass to
+# close a feature; a run's result, "pr --ready", and the headless runner refuse
+# a ready pull request without one. The command is test_command in
+# specs/jsdd.yml, else the "Test command" line of the constitution.
+
+SUITE_FILE="suite-result.txt"
+# Paths the kit writes after the suite ran (verify's evidence, the capability
+# documents, the board): changing them never makes a recorded pass stale.
+SUITE_IGNORE="specs docs/requirements.md docs/decisions.md docs/intent.md docs/capabilities PLAN.md BACKLOG.md"
+
+# suite_command: the project's test command, TAB, where it came from; nothing when none is set.
+suite_command() {
+  local c="" f="$SPECS_DIR/constitution.md" where="specs/constitution.md (Project specifics)"
+  load_config
+  c=$(config_get - test_command)
+  if [ -n "$c" ]; then printf '%s\t%s\n' "$c" "$MODES_REL test_command"; return; fi
+  [ -f "$f" ] || return 0
+  # The first `span` on a "Test command" line, in Project specifics, else anywhere.
+  first_cmd() { awk '{ i = index(tolower($0), "test command"); if (!i) next; r = substr($0, i)
+                       if (match(r, /`[^`]+`/)) { print substr(r, RSTART + 1, RLENGTH - 2); exit } }'; }
+  c=$(section "$f" "Project specifics" | first_cmd)
+  [ -n "$c" ] || { c=$(uncomment "$f" | first_cmd); where="specs/constitution.md"; }
+  [ -z "$c" ] || printf '%s\t%s\n' "$c" "$where"
+}
+SUITE_UNSET="no test command: set test_command in $MODES_REL, or a \"Test command:\" line with the command in backticks in specs/constitution.md's Project specifics"
+
+# suite_paths: the pathspec of the code the suite tests: everything but SUITE_IGNORE.
+suite_paths() { local p; printf '%s\n' .; for p in $SUITE_IGNORE; do printf ':(exclude)%s\n' "$p"; done; }
+# suite_changes [<commit>]: code files changed since the commit (or uncommitted), and untracked ones.
+suite_changes() {
+  # shellcheck disable=SC2046  # one pathspec per line, none with spaces
+  if [ -n "${1:-}" ]; then git -C "$ROOT" diff --name-only "$1" -- $(suite_paths)
+  else git -C "$ROOT" diff --name-only HEAD -- $(suite_paths); fi
+  # shellcheck disable=SC2046
+  git -C "$ROOT" ls-files --others --exclude-standard -- $(suite_paths)
+}
+# suite_rec <file> <key>
+suite_rec() { awk -v k="$2" '{ sub(/\r$/, "") } index($0, k "=") == 1 { print substr($0, length(k) + 2); exit }' "$1"; }
+
+# suite_state <ID>: one line saying whether the spec's code has a fresh passing
+# run of the full suite. Returns 0 when it has, 2 when no command is set, else 1.
+suite_state() {
+  local f row cmd rcmd res commit short tab
+  tab=$(printf '\t')
+  f="$(spec_dir "$1")/$SUITE_FILE"
+  row=$(suite_command)
+  [ -n "$row" ] || { echo "$SUITE_UNSET"; return 2; }
+  cmd=${row%%"$tab"*}
+  [ -f "$f" ] || { echo "the full suite has not run on $1's code: jsdd suite $1"; return 1; }
+  rcmd=$(suite_rec "$f" command); res=$(suite_rec "$f" result); commit=$(suite_rec "$f" commit)
+  short=$(printf '%s' "$commit" | cut -c1-7)
+  if [ "$res" != pass ]; then echo "the full suite failed (exit $(suite_rec "$f" exit)) on $short: \`$rcmd\`"; return 1; fi
+  if [ "$rcmd" != "$cmd" ]; then echo "the test command changed since the suite passed (\`$rcmd\`, now \`$cmd\`): jsdd suite $1"; return 1; fi
+  if [ "$(suite_rec "$f" clean)" != yes ]; then echo "the suite passed on uncommitted changes: commit them, then jsdd suite $1"; return 1; fi
+  if ! git -C "$ROOT" cat-file -e "$commit^{commit}" 2>/dev/null; then echo "the suite passed on $short, which this branch no longer has: jsdd suite $1"; return 1; fi
+  if [ -n "$(suite_changes "$commit")" ]; then echo "the code changed since the suite passed on $short: jsdd suite $1"; return 1; fi
+  echo "the full suite passed on $short (\`$cmd\`, $(suite_rec "$f" seconds)s)"
+}
+
+cmd_suite() {
+  local id dir row cmd src tab rc=0 start secs commit clean=yes rel
+  tab=$(printf '\t')
+  case ${1:-} in
+    --command)
+      row=$(suite_command); [ -n "$row" ] || { echo "$SUITE_UNSET" >&2; exit 2; }
+      printf '%s\t(from %s)\n' "${row%%"$tab"*}" "${row#*"$tab"}"; return ;;
+    ""|-*) echo "usage: jsdd suite <ID> [--check] | jsdd suite --command" >&2; exit 2 ;;
+  esac
+  id=$(norm_id "$1"); dir=$(spec_dir "$id"); rel=${dir#"$ROOT"/}
+  case ${2:-} in
+    --check) rc=0; suite_state "$id" || rc=$?; exit "$rc" ;;
+    "") ;;
+    *) echo "unknown option '$2'" >&2; exit 2 ;;
+  esac
+  row=$(suite_command); [ -n "$row" ] || { echo "$SUITE_UNSET" >&2; exit 2; }
+  [ -n "$GIT_COMMON" ] || { echo "jsdd suite needs a git repository: it records the commit it tested" >&2; exit 2; }
+  cmd=${row%%"$tab"*}; src=${row#*"$tab"}
+  [ -z "$(suite_changes)" ] || clean=no
+  commit=$(git -C "$ROOT" rev-parse HEAD)
+  echo "full suite (from $src): $cmd"
+  start=$(date +%s)
+  (cd "$ROOT" && bash -c "$cmd") || rc=$?
+  secs=$(( $(date +%s) - start ))
+  { echo "# The project's full test suite on this spec's code, recorded by jsdd suite. Do not edit: run jsdd suite $id again."
+    printf 'command=%s\nresult=%s\nexit=%s\ncommit=%s\nclean=%s\nseconds=%s\ndate=%s\n' \
+      "$cmd" "$([ $rc -eq 0 ] && echo pass || echo fail)" "$rc" "$commit" "$clean" "$secs" "$(iso_time)"
+  } >"$dir/$SUITE_FILE"
+  event suite "spec=$id" "result=$([ $rc -eq 0 ] && echo pass || echo fail)" "exit=$rc" "seconds=$secs"
+  if [ $rc -ne 0 ]; then
+    echo "full suite failed (exit $rc, ${secs}s); recorded in $rel/$SUITE_FILE" >&2; exit 1
+  fi
+  echo "full suite passed (${secs}s); recorded in $rel/$SUITE_FILE"
+  [ "$clean" = yes ] || echo "note: it ran on uncommitted changes, so it does not count: commit them, then run jsdd suite $id again" >&2
+  return 0
+}
+
 # --- pull request body -----------------------------------------------------
+
+# pr_ready <ID>: exit 0 when the spec's pull request may be ready for review
+# (not a draft): it is done, not parked, and a feature's full suite passed on
+# its code as it is now. Otherwise say why and exit 1.
+pr_ready() {
+  local spec why
+  spec="$(spec_dir "$1")/spec.md"
+  if [ -n "$(fm "$spec" parked)" ]; then echo "$1 is parked at $(fm "$spec" parked)"; return 1; fi
+  if [ "$(fm "$spec" status)" != done ]; then echo "$1 is $(fm "$spec" status), not done"; return 1; fi
+  if [ "$(fm "$spec" type)" = feature ] && ! why=$(suite_state "$1"); then echo "$why"; return 1; fi
+  echo "$1 is ready for review${why:+: $why}"
+}
 
 # section <file> <heading>: the lines under "## <heading>" up to the next "## ", outside comments, trimmed.
 section() {
@@ -2791,13 +2926,23 @@ section() {
 }
 
 cmd_pr() {
-  [ $# -ge 1 ] || { echo "usage: jsdd pr <ID> [--title]" >&2; exit 2; }
-  local id dir spec rel out refs parked
+  [ $# -ge 1 ] || { echo "usage: jsdd pr <ID> [--title | --ready]" >&2; exit 2; }
+  local id dir spec rel out refs parked suite rc=0
   id=$(norm_id "$1"); dir=$(spec_dir "$id"); spec="$dir/spec.md"; rel=${dir#"$ROOT"/}
-  if [ "${2:-}" = --title ]; then echo "[$id] $(fm "$spec" title)"; return; fi
+  case ${2:-} in
+    --title) echo "[$id] $(fm "$spec" title)"; return ;;
+    --ready) pr_ready "$id"; return ;;
+    "") ;;
+    *) echo "unknown option '$2'" >&2; exit 2 ;;
+  esac
   refs=$(fm "$spec" refs | tr -d "[]\"'"); parked=$(fm "$spec" parked)
   printf 'Spec [%s](%s/spec.md) · %s · status %s%s\n' "$id" "$rel" "$(fm "$spec" type)" "$(fm "$spec" status)" "${refs:+ · refs $refs}"
   [ -z "$parked" ] || printf '\n> **Parked at %s.** A person must settle this before merging.\n' "$parked"
+  if [ "$(fm "$spec" type)" = feature ]; then
+    suite=$(suite_state "$id") || rc=$?
+    if [ $rc -eq 0 ]; then printf '\nFull test suite: %s.\n' "$suite"
+    else printf '\n> **Full test suite not passed:** %s. Do not merge until it passes.\n' "$suite"; fi
+  fi
   out=$(section "$spec" Problem); [ -z "$out" ] || printf '\n## Why\n\n%s\n' "$out"
   out=$(section "$spec" Requirements); [ -z "$out" ] || printf '\n## Requirements\n\n%s\n' "$out"
   out=$(section "$dir/tasks.md" Evidence); [ -z "$out" ] || printf '\n## Acceptance criteria and evidence\n\n%s\n' "$out"
@@ -3144,6 +3289,7 @@ main() {
     auto) shift; cmd_auto "$@" ;;
     freeze) shift; cmd_freeze "$@" ;;
     pr) shift; cmd_pr "$@" ;;
+    suite) shift; cmd_suite "$@" ;;
     -h|--help|help|"") usage ;;
     *) echo "unknown command '$1'" >&2; usage >&2; exit 2 ;;
   esac

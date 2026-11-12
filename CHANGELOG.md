@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+- The project's whole test suite is now a gate before a spec closes or its pull request leaves draft. Task checks are narrow, so a change could pass every check, converge, and open a ready pull request that broke an existing test no task named, leaving CI to be the first full run.
+  - New `jsdd suite <ID>` runs the project's test command from the repository root and records the result, with the commit it ran on, in `suite-result.txt` in the spec folder. `jsdd suite <ID> --check` says whether a pass is recorded for the code as it is now. A code change makes the pass stale; a change to the kit's own documents does not. `jsdd suite --command` prints the command and where it came from.
+  - The command is the new `test_command` key in `specs/jsdd.yml`, else the first command in backticks on the constitution's `Test command:` line.
+  - `/jsdd:verify` runs it, and each failing test is a gap. A feature converges and closes only on a fresh pass. In a run, a failure that also happens on the main branch, or a missing test command, parks at `verify.gaps`.
+  - `jsdd run result --write` records a done feature without a fresh pass as `failed`, with the reason, so `jsdd auto run` exits 1.
+  - New `jsdd pr <ID> --ready` exits 0 only for a spec that is done, not parked, and (for a feature) has a fresh pass; `/jsdd:auto` opens a draft otherwise. The pull request body states the suite's result. `jsdd auto run` turns a ready pull request that fails `--ready` back into a draft (event `pr.draft`).
+  - `jsdd auto doctor` checks that a test command is set (FIX otherwise), and `/jsdd:auto` refuses to start without one. A hook blocks edits to `suite-result.txt` during a run.
+  - `/jsdd:plan` keeps task checks narrow and adds no task just to run the whole suite. The reviewer's verify mode names existing tests that pin what the change alters.
+
 ## 0.7.12 (2026-11-11)
 
 - Tasks can be blocks: a head line with the checkbox, the ID, `[P]`, a short title, and `→ AC-n`, then indented sub-bullets for the files, the check (`- check: …`), and notes. One-line tasks still work, and both forms can be mixed in one `tasks.md`. `jsdd done` reads the check from the body. With `--manual`, the note goes in a `- checked:` sub-bullet under the block. A task with more than one check is refused by `done` and `freeze`, and the autonomous dry run sees manual checks in a body. The template, `/jsdd:plan`, and the reviewer now write tasks as blocks, with a blank line between them, so ticks on neighboring tasks in two worktrees merge without a conflict. A check that needs pipes, `$(...)`, or several commands goes in a script the check runs.
