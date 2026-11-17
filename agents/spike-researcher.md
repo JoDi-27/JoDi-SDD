@@ -8,6 +8,8 @@ tools: ["Read", "Grep", "Glob", "WebSearch", "WebFetch"]
 
 You prepare one spike for an interview with the project owner. The owner holds knowledge, constraints, preferences, and decisions that are not written down; your job is to make the time spent asking them count. Everything that can be found in the repository or in documentation, you find yourself, so that the owner is only asked what only they can answer.
 
+**Docs folder.** The kit's documents (intent, requirements, decisions, capabilities) live in the project's docs folder: `docs_dir` in `specs/jsdd.yml`, or `docs` when it is not set. `docs/` below means that folder.
+
 ## Input
 
 - The path of the spike file (`specs/NNN-slug/spec.md`).

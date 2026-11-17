@@ -8,9 +8,12 @@ argument-hint: [--migrate] [notes about the product]
 
 Arguments: $ARGUMENTS (`--migrate` is a flag; any other text is information from the user about the product, used to pre-fill answers below)
 
+**Docs folder.** `docs/` in this skill means the folder the user picks for the kit's documents in step 1 (`docs_dir` in `specs/jsdd.yml`). Once it is set, `jsdd paths` prints the path of every kit document. Read and write the kit's documents there, and give the folder to the agents you launch.
+
 ## 1. Check
 
 - Run `jsdd init --dry-run` and show what it would add, update, keep, or remove.
+- **Docs folder.** Always ask, on every run, also on a project already set up: where do the kit's documents go (intent, requirements, decisions, capability documents, legacy copies)? Ask with AskUserQuestion, with the options `docs/` and `docs/product/` (Other lets the user name a folder). Recommend `docs/product/` when `docs/` already holds documents that are not the kit's (the dry run's "Docs folder" section says so on a project already set up; otherwise list `docs/`) or the project has a docs site (`mkdocs.yml`, `docusaurus.config.*`, `docs/.vitepress/`, `docs/_config.yml`), and say what you found. Otherwise recommend `docs/`, or the current folder on a project already set up. Then run `jsdd init --dry-run --docs-dir <folder>` and show where the starters land. On a project already set up, a different folder means moving the documents: run `jsdd move-docs <folder> --dry-run`, show what it moves and rewrites, and ask whether to go ahead.
 - **Existing project.** If the dry run prints "Existing code", ask with AskUserQuestion whether this is an existing product to bring under the kit (brownfield) or a new one starting in this repository. Recommend brownfield when there are more than a handful of commits or files. Brownfield changes the interview (step 4) and nothing else.
 - **Files in another format.** For each path marked `keep`, the project has its own document under a kit name, which the kit cannot read. Show its first lines and ask whether to move it to `docs/legacy/<name>` (with `git mv` in a git repository), so init adds the kit's version and the interview folds the old content in. Recommend moving. A file the user wants left in place stays, and the step of the interview that fills it is skipped, with a warning that `jsdd` cannot read it (for `docs/requirements.md`, `SDD_REQUIREMENTS` can point coverage at a kit-format file elsewhere).
 - **Documents elsewhere.** The project may already say what a starter should hold under another name. Read each `source` path the dry run lists, plus the README, `CLAUDE.md`, and the other Markdown files at the top level and in `docs/`. Judge by content, not name: a listed file may cover nothing, or a different starter, and a file the dry run missed may be the intent. Show the user the mapping you propose, one line per document (`VISION.md` → intent, `README.md` "About" → intent, `docs/adr/` → decisions), and let them confirm or correct it. A whole file that does a starter's job: recommend moving it to `docs/legacy/<name>` (with `git mv` in a git repository), as for a `keep` file. Part of a file, such as a README section: it stays where it is and is read as a source. If the project has existing code and nothing covers the intent, ask whether it is written down anywhere (a path, a link, or pasted text).
@@ -19,8 +22,9 @@ Arguments: $ARGUMENTS (`--migrate` is a flag; any other text is information from
 
 ## 2. Run
 
+- On a project already set up whose user chose to move the documents, run `jsdd move-docs <folder>` (it needs a clean working tree: offer to commit first) and offer the commit `[meta] Move kit docs to <folder>`.
 - Move the files the user agreed to into `docs/legacy/`.
-- Run `jsdd init` (with `--migrate` if the user agreed).
+- Run `jsdd init --docs-dir <folder>` with the folder from step 1 (and `--migrate` if the user agreed). It records the folder as `docs_dir` in `specs/jsdd.yml`.
 - Rewrite the old kit references the user agreed to, then run `jsdd init --dry-run` again: it lists no `stale` lines once they are all gone.
 - Copy any tweaks found in step 1 into the "Project specifics" section of `specs/constitution.md`. Add that section from the plugin's starter (`${CLAUDE_PLUGIN_ROOT}/starters/specs/constitution.md`) if the project's constitution predates it.
 

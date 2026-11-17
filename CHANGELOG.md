@@ -2,6 +2,25 @@
 
 ## Unreleased
 
+- The kit's documents (intent, requirements, decisions, capability documents, legacy copies) can live in a folder of their own, so they no longer mix with a project's own `docs/`, such as a docs site or user guides.
+  - New `docs_dir` key in `specs/jsdd.yml` (default `docs`), overridden for one command by `SDD_DOCS_DIR`. `jsdd mode --check` rejects a folder outside the repository, inside `specs/`, or that is a file.
+  - `/jsdd:init` now asks where the documents go every time it runs, recommending `docs/product/` when `docs/` already holds other documents or the project has a docs site. `jsdd init --docs-dir <folder>` records the choice and copies the starters there, with their paths pointed at it. `jsdd new` does the same for spec templates.
+  - New `jsdd paths [--json]` prints where each kit document lives. Skills, agents, and hooks read them from there.
+  - New `jsdd move-docs <folder> [--dry-run]` moves the documents of a project that is already set up: `git mv` for each, `docs_dir` set, and the references rewritten in spec folders (including `checks.lock`, so frozen checks still match their tasks), `PLAN.md`, `BACKLOG.md`, `CLAUDE.md`, `AGENTS.md`, `README.md`, and the moved documents. Other mentions are listed, not rewritten. It refuses on uncommitted changes or while a run is in progress. `jsdd status` warns about kit documents a branch from before the move added to the old folder.
+  - New upgrade notices: a change that asks something of a project set up before it is shown once per clone at session start, only where it applies (`jsdd notices`, `--all` to list them again). The first: a project whose `docs/` mixes the kit's documents with its own is told about `jsdd move-docs`, and the board keeps a one-line reminder until the documents move or `docs_dir: docs` is set.
+
+### Upgrading
+
+Nothing changes for a project that leaves `docs_dir` unset: the documents stay in `docs/`. To give them a folder of their own:
+
+```sh
+jsdd move-docs docs/product --dry-run   # what moves, and which references are rewritten
+jsdd move-docs docs/product
+git add -A && git commit -m "[meta] Move kit docs to docs/product"
+```
+
+Run it with no spec run in progress, and rerun `/jsdd:init` afterwards to refresh `specs/README.md`.
+
 ## 0.8.0 (2026-11-12)
 
 - The project's whole test suite is now a gate before a spec closes or its pull request leaves draft. Task checks are narrow, so a change could pass every check, converge, and open a ready pull request that broke an existing test no task named, leaving CI to be the first full run.

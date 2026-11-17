@@ -8,6 +8,8 @@ argument-hint: <spec ID>
 
 Spec: $ARGUMENTS
 
+**Docs folder.** `docs/` in this skill means the project's docs folder: `docs_dir` in `specs/jsdd.yml`, or `docs` when it is not set. The session-start context names it when it is not `docs/`, and `jsdd paths` prints the path of every kit document. Read and write the kit's documents there, and give the folder to the agents you launch.
+
 You prove that the spec is met. You do not add features.
 
 **Runtime mode.** Run `jsdd mode` first. The decision points below are marked with their gate, like (gate `verify.gaps`). When you reach one, `jsdd gate <gate>` gives its policy. `ask`: a person decides, as the step says; in `manual` mode every gate asks. `auto`: pass it by the gate's rule in "Autopilot and autonomous rules" below, and record the decision as `auto: <gate>` with what passed it, never as a person's; when the rule cannot pass it, park. `park`: ask nobody and guess nothing. Run `jsdd park <ID> <gate> "<what a person must decide>"`, release your claims, run `jsdd status --write`, and stop (inside `/jsdd:auto`, go to its pull request step). In a mode other than `manual`, `autopilot`, and `autonomous`, stop and tell the user that this skill does not support it.

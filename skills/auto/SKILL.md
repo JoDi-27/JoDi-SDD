@@ -8,6 +8,8 @@ argument-hint: "[<spec ID> | setup | --dry-run | doctor]"
 
 Input: $ARGUMENTS
 
+**Docs folder.** `docs/` in this skill means the project's docs folder: `docs_dir` in `specs/jsdd.yml`, or `docs` when it is not set. The session-start context names it when it is not `docs/`, and `jsdd paths` prints the path of every kit document. Read and write the kit's documents there, and give the folder to the agents you launch.
+
 Two modes run work with nobody asked:
 
 - **autopilot**: the person wrote and approved one spec. `/jsdd:auto <ID>` takes it to a pull request. Starting the run is their approval of the spec.

@@ -10,7 +10,7 @@ You don't need to install the plugin to test it. Run Claude Code in a test proje
 claude --plugin-dir path/to/jodi-sdd
 ```
 
-Check the manifests with `claude plugin validate .`, and run `/bin/bash .github/scripts/smoke.sh` for an end-to-end test of `jsdd` and the hooks in a throwaway repository. `/bin/bash tests/scenarios/run.sh [name]` runs the scenario tests: whole workflows (migrating from the install.sh kit, a feature from planned to done across two sessions, a baseline and its capability document, parallel worktrees, claims shared between two clones through a bare remote, autopilot runs, the autonomous charter and loop, cloud runs, tasks written as blocks, and the full-suite gate), each in its own throwaway repository from `tests/fixtures/`. A change to how `jsdd` behaves over a workflow gets a step in a scenario, or a new `NN-name.sh`. [CI](.github/workflows/ci.yml) runs both on every pull request, plus `shellcheck -S warning` on the scripts; the smoke test runs on Linux, on macOS's bash 3.2, and on Windows in Git Bash.
+Check the manifests with `claude plugin validate .`, and run `/bin/bash .github/scripts/smoke.sh` for an end-to-end test of `jsdd` and the hooks in a throwaway repository. `/bin/bash tests/scenarios/run.sh [name]` runs the scenario tests: whole workflows (migrating from the install.sh kit, a feature from planned to done across two sessions, a baseline and its capability document, parallel worktrees, claims shared between two clones through a bare remote, autopilot runs, the autonomous charter and loop, cloud runs, tasks written as blocks, the full-suite gate, and the docs folder with moving it), each in its own throwaway repository from `tests/fixtures/`. A change to how `jsdd` behaves over a workflow gets a step in a scenario, or a new `NN-name.sh`. [CI](.github/workflows/ci.yml) runs both on every pull request, plus `shellcheck -S warning` on the scripts; the smoke test runs on Linux, on macOS's bash 3.2, and on Windows in Git Bash.
 
 ## Releasing
 
@@ -20,6 +20,7 @@ Every PR merged into `main` is released by [the Release workflow](.github/workfl
 - Write user-facing notes under `## Unreleased` in your PR. With none, the PR title becomes the entry.
 - `main` is protected: changes land through a PR whose `lint` and `smoke` checks pass, and nobody force-pushes or deletes it. The release commit and tag are pushed with the `RELEASE_TOKEN` secret, a fine-grained token of a repository admin with Contents read and write on this repository, because the workflow's own token cannot bypass the protection.
 - Don't edit `version` by hand.
+- A change that asks something of projects set up before it (a file to move, a setting to choose) gets an upgrade notice: an id in `NOTICES` in `bin/jsdd` and a `notice_<id>` function that prints the notice only where it applies. The session-start hook shows each one once per clone. Also write the steps under `### Upgrading` in the changelog entry.
 
 ## Layout
 

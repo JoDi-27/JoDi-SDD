@@ -118,6 +118,8 @@ Under the hood, these commands use the `jsdd` CLI, which the plugin adds to the 
 
 These are your files. Running `/jsdd:init` again only updates `specs/README.md`, when a new plugin version changes it, and never overwrites the others.
 
+The four `docs/` entries go in the folder you pick when `/jsdd:init` asks: `docs/` or, when `docs/` already holds your own documentation, a folder of their own such as `docs/product/` (`docs_dir` in `specs/jsdd.yml`).
+
 ## FAQ
 
 **The board didn't print and commits aren't checked.** Hooks load at session start. Start a new session after `/jsdd:init` or after installing the plugin.
@@ -126,13 +128,15 @@ These are your files. Running `/jsdd:init` again only updates `specs/README.md`,
 
 **Verify found gaps. What now?** Read `verify-report.md` in the spec folder: one numbered gap (G1, G2, …) with a proposed fix each. Approve, and `/jsdd:plan <ID>` plans the fixes as an amendment, which `/jsdd:implement` then builds. Decline, and the spec is blocked; `/jsdd:plan <ID>` later is your approval to fix them after all. A gap that survives two rounds gets only two options: change the spec, or drop the gap.
 
-**Where does my data live, and how do I remove the kit?** Everything is Markdown in your repository: `specs/`, `docs/`, `PLAN.md`, and `BACKLOG.md`. Claims are kept in `.git/sdd-claims` (or `specs/.claims` outside git). Remote claims are refs under `refs/sdd-claims/` on the remote, cached in `.git/sdd-claims-remote`. Uninstall with the scope you installed with (the default is `user`), then delete those files if you no longer want them:
+**Where does my data live, and how do I remove the kit?** Everything is Markdown in your repository: `specs/`, the docs folder (`docs/`, or `docs_dir` in `specs/jsdd.yml`), `PLAN.md`, and `BACKLOG.md`. Claims are kept in `.git/sdd-claims` (or `specs/.claims` outside git). Remote claims are refs under `refs/sdd-claims/` on the remote, cached in `.git/sdd-claims-remote`. Uninstall with the scope you installed with (the default is `user`), then delete those files if you no longer want them:
 
 ```sh
 claude plugin uninstall jsdd@jodi-sdd --scope project
 ```
 
-**How do I update?** Run `claude plugin update jsdd@jodi-sdd`, start a new session, and run `/jsdd:init` again to pick up any changes to `specs/README.md`. It leaves your other files as they are. [CHANGELOG.md](CHANGELOG.md) lists what changed in each release, including behaviour changes.
+**How do I update?** Run `claude plugin update jsdd@jodi-sdd`, start a new session, and run `/jsdd:init` again to pick up any changes to `specs/README.md`. It leaves your other files as they are. [CHANGELOG.md](CHANGELOG.md) lists what changed in each release, including behaviour changes. When a release asks something of a project set up before it, the board at session start says so once per clone, and only where it applies; `jsdd notices --all` lists those notices again.
+
+**The kit's documents are mixed with our own docs in `docs/`.** Move them to a folder of their own: `jsdd move-docs docs/product --dry-run` shows what moves and which references it rewrites, and the same without `--dry-run` does it. To keep them together and silence the reminder, set `docs_dir: docs` in `specs/jsdd.yml`.
 
 **Can two people, or two sessions, work on one project?** Yes. A session claims a spec or task before starting, so another session skips it. By default, claims are shared across worktrees on one machine. For several people on their own clones, run `git config jsdd.claims remote` in each clone, and claims become refs on the git remote that every clone sees. Claims show as stale after 8 hours. See [Working in parallel](starters/specs/README.md#working-in-parallel).
 

@@ -10,6 +10,8 @@ You survey code that was written before the kit, so the owner can confirm what i
 
 You never edit, create, or delete files, and you never commit. Use Bash only to read (`git log`, `git ls-files`, `ls`) and to run the test command or single test files, to learn which tests exist and whether they pass.
 
+**Docs folder.** The kit's documents (intent, requirements, decisions, capabilities) live in the project's docs folder: `docs_dir` in `specs/jsdd.yml`, or `docs` when it is not set. `docs/` below means that folder.
+
 ## Input
 
 - **Mode:** `areas` or `area`.

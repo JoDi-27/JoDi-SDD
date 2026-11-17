@@ -17,6 +17,12 @@ A lightweight spec-driven development (SDD) kit. Every piece of work, spike, fea
 
 A spec usually delivers one checklist item of `PLAN.md` (a spike, a baseline, a foundations item, a Phase 1 deliverable). If an item is too big for a few days of work, split it into several specs that depend on each other.
 
+### The docs folder
+
+The intent, requirements, capability documents, decisions, and the legacy copies `/jsdd:init` keeps all live in one folder, `docs/` unless `docs_dir` in `specs/jsdd.yml` names another (`docs_dir: docs/product`). A project whose `docs/` already holds a docs site or user guides keeps the kit's documents in a folder of their own. `/jsdd:init` asks where they go every time it runs, and `jsdd paths` prints where each one is. `SDD_DOCS_DIR` overrides the setting for one command.
+
+To move them in a project that is already set up, run `jsdd move-docs <folder> --dry-run`, then the same without `--dry-run`, on a clean working tree with no run in progress. It moves each document with `git mv`, sets `docs_dir`, and points the project's references at the new paths: the Markdown in every spec folder, `checks.lock` (the same rewrite as its task, so a frozen check still matches), `PLAN.md`, `BACKLOG.md`, `CLAUDE.md`, `AGENTS.md`, `README.md`, and the moved documents. It lists any other mention, in a script say, for you to check, and never rewrites the legacy copies. Commit the move on its own. A branch from before the move that adds a document puts it in the old folder: `jsdd status` warns about it, and `jsdd move-docs <folder>` moves it over.
+
 ## Requirements and specs
 
 `docs/requirements.md` is the product-level list of what the product must do; a spec is one slice of it made testable. They link by ID, and nothing is copied:
@@ -322,6 +328,9 @@ jsdd pr 003                          # a pull request body from the spec, eviden
 jsdd auto dry-run                    # what an autonomous loop would take, and where each spec would park
 jsdd auto doctor                     # what an unattended run still needs, with the fix for each
 jsdd charter                         # the charter's effective values: preset, product class, scope, budgets
+jsdd paths                           # where the kit's documents live (the docs folder)
+jsdd move-docs docs/product --dry-run   # what moving them to another folder would move and rewrite
+jsdd notices --all                   # upgrade notices that apply to this project
 ```
 
 Progress is computed from the files: checkboxes in `tasks.md` (for a spike, the goal questions, questions for you, and deliverables in `spec.md`; for a baseline, its acceptance criteria), and the open questions count from the `[NEEDS CLARIFICATION: …]` markers in `spec.md` and `plan.md`. HTML comments are ignored, so template guidance never counts.
