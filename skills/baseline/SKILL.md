@@ -8,6 +8,8 @@ argument-hint: <area | baseline spec ID> [what is about to change]
 
 Input: $ARGUMENTS
 
+**Docs folder.** `docs/` in this skill means the project's docs folder: `docs_dir` in `specs/jsdd.yml`, or `docs` when it is not set. The session-start context names it when it is not `docs/`, and `jsdd paths` prints the path of every kit document. Read and write the kit's documents there, and give the folder to the agents you launch.
+
 A baseline writes down how an area works today, so the work that changes it has rows to cite and the kit counts existing behavior as done. It documents; it never changes code or writes tests. Survey only the area the coming work touches, never the whole product.
 
 **Runtime mode.** Run `jsdd mode` first. The decision points below are marked with their gate, like (gate `baseline.rows`). When you reach one, `jsdd gate <gate>` gives its policy. `ask`: a person decides, as the step says; in `manual` mode every gate asks. `auto`: pass it by the gate's rule in "Autonomous rules" below (in `autopilot` mode a person runs this skill before the run starts, so its gates ask, or park where `jsdd gate` says so), and record the decision as `auto: <gate>` with what passed it, never as a person's; when the rule cannot pass it, park. `park`: ask nobody and guess nothing. Run `jsdd park <ID> <gate> "<what a person must decide>"`, release your claims, run `jsdd status --write`, and stop (inside `/jsdd:auto`, go to its pull request step). In a mode other than `manual`, `autopilot`, and `autonomous`, stop and tell the user that this skill does not support it.

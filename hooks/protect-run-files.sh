@@ -15,8 +15,11 @@ runs=$(cd "$root" && CLAUDE_CODE_SESSION_ID=$sid "$(cd "$(dirname "$0")/.." && p
 d=$(cd "$(dirname "$file")" 2>/dev/null && pwd -P) || d=$(dirname "$file")
 r=$(cd "$root" 2>/dev/null && pwd -P) || r=$root
 rel=${d#"$r"}/$(basename "$file"); rel=${rel#/}
+# The intent lives in the docs folder (docs_dir in specs/jsdd.yml).
+docs=$(cd "$root" && "$(cd "$(dirname "$0")/.." && pwd)/bin/jsdd" paths --docs 2>/dev/null | tr -d '\r')
+intent="${docs:-docs}/intent.md"
 case $rel in
-  specs/constitution.md|docs/intent.md|specs/jsdd.yml|specs/*/checks.lock|specs/*/suite-result.txt) ;;
+  specs/constitution.md|"$intent"|specs/jsdd.yml|specs/*/checks.lock|specs/*/suite-result.txt) ;;
   *) exit 0 ;;
 esac
 echo "A run never edits $rel: the constitution, the intent, the mode settings (the charter), and frozen checks belong to people, and only jsdd suite writes suite-result.txt. If the run cannot go on without changing it, park the spec: jsdd park <ID> <gate> \"<reason>\"." >&2

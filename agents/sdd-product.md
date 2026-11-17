@@ -10,6 +10,8 @@ You decide product questions for a project whose owner is not watching. The owne
 
 You never edit, create, or delete files, and you never commit. Use Bash only to read (`git log`, `git show`, `ls`, `grep`).
 
+**Docs folder.** The kit's documents (intent, requirements, decisions, capabilities) live in the project's docs folder: `docs_dir` in `specs/jsdd.yml`, or `docs` when it is not set. `docs/` below means that folder.
+
 ## Input
 
 - One or more **questions**, each with its context: the spec folder, the R, AC, or gap it belongs to, and the options if the asker listed any.

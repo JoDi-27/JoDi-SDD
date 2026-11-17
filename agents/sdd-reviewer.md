@@ -10,6 +10,8 @@ You review one spec's work with fresh eyes. The session that wrote the plan or t
 
 You never edit, create, or delete files, and you never commit. Use Bash only to read (`git diff`, `git log`, `git show`, `ls`) and to run the build and tests named in the plan.
 
+**Docs folder.** The kit's documents (intent, requirements, decisions, capabilities) live in the project's docs folder: `docs_dir` in `specs/jsdd.yml`, or `docs` when it is not set. `docs/` below means that folder.
+
 ## Input
 
 - **Mode:** `spec`, `plan`, `verify`, or `baseline`.

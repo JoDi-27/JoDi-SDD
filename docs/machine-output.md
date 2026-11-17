@@ -50,7 +50,7 @@ The claim owner is `$JSDD_SESSION_ID` when set, else `$CLAUDE_CODE_SESSION_ID`, 
 
 These commands print JSON with `--json`, or when `JSDD_OUTPUT=json`:
 
-- `next`, `status`, `mode`, `charter`, `profile`
+- `next`, `status`, `mode`, `charter`, `profile`, `paths`
 - `auto queue`, `auto dry-run`, `auto doctor`, `auto run`
 - `run status`, `run result`
 
@@ -75,6 +75,7 @@ On failure, `ok` is false, `exit` is the exit code, `errors` is `[{ "code": "<ex
 | `jsdd.status/1` | `mode`, `mode_source`, `mode_warning`, `profile`, `specs[]` (`id`, `type`, `status`, `phase`, `depends_on[]`, `done`, `total`, `open_questions`, `title`, `dir`, `claim`, `task_note`, `parked`), `next` (as `jsdd.next/1`), `assumed_decisions`, `counts` (by status) |
 | `jsdd.mode/1` | `mode`, `source`, `warning`, `profile`, `config` (`exists`, `valid`, `errors[]`), `allowed_modes[]`; with `--explain`: `gates[]` (`gate`, `policy`, `source`, `decides`), `budgets[]` |
 | `jsdd.charter/1` | `charter` (has an autonomous section), `autonomous_allowed`, `preset`, `product`, `types[]`, `phases[]` (null: every phase), `exclude_groups[]`, `budgets`, `gates` |
+| `jsdd.paths/1` | `docs` (the docs folder), `source` (where it came from), `intent`, `requirements`, `decisions`, `capabilities`, `legacy`: each path from the repository root |
 | `jsdd.profile/1` | `profile`, `source`, `settings` (`mode`, `claims`, `output`, `owner`, `events`, `doctor`: each `{ value, source }`), `profiles[]` |
 | `jsdd.queue/1` | `mode`, `profile`, `take[]` (`id`, `type`, `status`, `next`), `skip[]` (`id`, `type`, `status`, `reason`, `detail`) |
 | `jsdd.dry-run/1` | the queue, plus `preset`, `product`, `specs_per_run`, `wall_time_hours`, `merge` (`auto` or `pull_request`); each `take[]` adds `would_park[]` and `next_loop` (past `specs_per_run`) |
