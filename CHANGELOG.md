@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.8.1 (2026-11-17)
+
 - The kit's documents (intent, requirements, decisions, capability documents, legacy copies) can live in a folder of their own, so they no longer mix with a project's own `docs/`, such as a docs site or user guides.
   - New `docs_dir` key in `specs/jsdd.yml` (default `docs`), overridden for one command by `SDD_DOCS_DIR`. `jsdd mode --check` rejects a folder outside the repository, inside `specs/`, or that is a file.
   - `/jsdd:init` now asks where the documents go every time it runs, recommending `docs/product/` when `docs/` already holds other documents or the project has a docs site. `jsdd init --docs-dir <folder>` records the choice and copies the starters there, with their paths pointed at it. `jsdd new` does the same for spec templates.
