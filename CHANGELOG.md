@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+## 0.8.2 (2026-11-27)
+
+- [meta] Point GitHub links at the JoDi-SDD organization ([#38](https://github.com/JoDi-SDD/JoDi-SDD/pull/38))
+
 ## 0.8.1 (2026-11-17)
 
 - The kit's documents (intent, requirements, decisions, capability documents, legacy copies) can live in a folder of their own, so they no longer mix with a project's own `docs/`, such as a docs site or user guides.
