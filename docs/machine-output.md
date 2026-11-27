@@ -1,6 +1,6 @@
 # Running jsdd from scripts and the cloud
 
-This page is for scripts that drive the kit with nobody watching: a cron line, a CI job, or a container such as [sdd-runtime](https://github.com/JoDi-27/sdd-runtime). It covers:
+This page is for scripts that drive the kit with nobody watching: a cron line, a CI job, or a container such as [sdd-runtime](https://github.com/JoDi-SDD/sdd-runtime). It covers:
 
 - the `cloud` profile
 - JSON output and exit codes

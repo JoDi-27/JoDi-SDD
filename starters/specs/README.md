@@ -1,6 +1,6 @@
 # Specs: how work gets done here
 
-A lightweight spec-driven development (SDD) kit. Every piece of work, spike, feature, or baseline, starts as a spec in this folder, moves through a few reviewed steps, and is tracked here until it is done. The kit is a Claude Code plugin (`jsdd`): plain Markdown, one shell script, nine skills, three subagents, and six hooks. The terms used here are defined in the plugin's [glossary](https://github.com/JoDi-27/JoDi-SDD/blob/main/GLOSSARY.md).
+A lightweight spec-driven development (SDD) kit. Every piece of work, spike, feature, or baseline, starts as a spec in this folder, moves through a few reviewed steps, and is tracked here until it is done. The kit is a Claude Code plugin (`jsdd`): plain Markdown, one shell script, nine skills, three subagents, and six hooks. The terms used here are defined in the plugin's [glossary](https://github.com/JoDi-SDD/JoDi-SDD/blob/main/GLOSSARY.md).
 
 ## Where things live
 
