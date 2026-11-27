@@ -154,6 +154,29 @@ The skills don't change: they only call the `jsdd` CLI.
 - With no argument, it prints both together: the spec graph with each spec's tasks nested under it.
 - `--mermaid` prints the same graph as a Mermaid flowchart, with one subgraph per spec, which can go into `STATUS.md` or a PR description.
 
+### 14. The core as a release artifact
+
+*From the kit's other consumers: [sdd-runtime](https://github.com/JoDi-SDD/sdd-runtime) today, and the planned MCP server (`JoDi-SDD/jsdd-mcp`), which bundles a pinned kit release.*
+
+**Gap:** the kit has a core that every channel shares (`skills/`, `bin/jsdd`, `templates/`, `starters/`, and the file formats) and a Claude Code channel (`hooks/`, `agents/`, `.claude-plugin/`), but nothing marks the line between them. Consumers outside this repository have to install the whole plugin to get the core, and nothing stops core files from depending on the channel: some skill text already names slash commands, hooks, and subagents.
+
+**Shape:** keep one repository, and make the core something each release ships on its own:
+
+- The Release workflow attaches `jsdd-core-vX.Y.Z.tar.gz` to each GitHub release, holding only the core folders. What's in the tarball is the core; consumers pin a version and use nothing else.
+- A CI check fails when a core file refers to the Claude Code channel: `hooks/`, `agents/`, `${CLAUDE_PLUGIN_ROOT}`, or a `/jsdd:` slash command in skill text. Existing references are fixed first, or listed as known exceptions that the check shrinks over time.
+- `docs/machine-output.md` says the tarball's layout is part of the contract, like `--json` output: a change to it is a breaking change.
+- Consumers check the version they unpacked against the range they support, using the version `bin/jsdd --json` already reports.
+
+**Not yet: a separate core repository.** Claude Code installs a plugin straight from its folder, so a split would need a build step that copies the core into the plugin at release. That ends "no build step", and turns every core change into a release plus a pin bump in each channel. Revisit when one of these holds:
+
+- a third channel appears, so the plugin is one channel among several
+- the core gains code beyond bash and Markdown, with its own tests and dependencies
+- releases of the Claude Code channel alone start costing consumers real work
+
+With the tarball and the check in place, a split is mostly moving files: the new repository publishes the same tarball, and consumers don't notice.
+
+**Touches:** `.github/workflows/release.yml`, `.github/scripts/`, `.github/workflows/ci.yml`, `docs/machine-output.md`, and skill text that refers to the channel (overlaps with idea 10's removal of `${CLAUDE_PLUGIN_ROOT}`).
+
 ## Larger: autonomous mode
 
 ### 12. Autonomous mode
