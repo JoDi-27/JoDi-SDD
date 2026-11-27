@@ -72,7 +72,7 @@ Run it with no spec run in progress, and rerun `/jsdd:init` afterwards to refres
 
 ## 0.7.9 (2026-11-09)
 
-- [meta] Roadmap: product agent for autonomous mode ([#31](https://github.com/JoDi-27/JoDi-SDD/pull/31))
+- [meta] Roadmap: product agent for autonomous mode ([#31](https://github.com/JoDi-SDD/JoDi-SDD/pull/31))
 
 ## 0.7.8 (2026-11-09)
 

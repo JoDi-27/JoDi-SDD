@@ -334,7 +334,7 @@ What it costs:
 
 ### 13. Cloud-native runs
 
-*From [sdd-runtime](https://github.com/JoDi-27/sdd-runtime), which runs the kit in a throwaway container with nobody watching, and from any script (cron, CI) that drives the kit.* **Built:** see [docs/machine-output.md](docs/machine-output.md) and [CHANGELOG.md](CHANGELOG.md) (Unreleased).
+*From [sdd-runtime](https://github.com/JoDi-SDD/sdd-runtime), which runs the kit in a throwaway container with nobody watching, and from any script (cron, CI) that drives the kit.* **Built:** see [docs/machine-output.md](docs/machine-output.md) and [CHANGELOG.md](CHANGELOG.md) (Unreleased).
 
 As built, it differs from the design below in three places, and part of C4 is still open:
 

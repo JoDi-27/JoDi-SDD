@@ -3,8 +3,8 @@
   <img src=".github/assets/banner-light.svg" alt="JoDi-SDD: Spec-driven development for Claude Code, as a plugin." width="100%">
 </picture>
 
-[![CI](https://github.com/JoDi-27/JoDi-SDD/actions/workflows/ci.yml/badge.svg)](https://github.com/JoDi-27/JoDi-SDD/actions/workflows/ci.yml)
-[![Release](https://img.shields.io/github/v/release/JoDi-27/JoDi-SDD)](https://github.com/JoDi-27/JoDi-SDD/releases/latest)
+[![CI](https://github.com/JoDi-SDD/JoDi-SDD/actions/workflows/ci.yml/badge.svg)](https://github.com/JoDi-SDD/JoDi-SDD/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/JoDi-SDD/JoDi-SDD)](https://github.com/JoDi-SDD/JoDi-SDD/releases/latest)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
 # JoDi-SDD
@@ -61,7 +61,7 @@ It only works in Claude Code. If you use other coding agents, or want a large ec
 You need Claude Code with plugin support, ideally in a git repository. In the project where you want it:
 
 ```sh
-claude plugin marketplace add JoDi-27/jodi-sdd --scope project
+claude plugin marketplace add JoDi-SDD/JoDi-SDD --scope project
 claude plugin install jsdd@jodi-sdd --scope project
 ```
 

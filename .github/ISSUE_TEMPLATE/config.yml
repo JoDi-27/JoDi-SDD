@@ -1,5 +1,5 @@
 blank_issues_enabled: true
 contact_links:
   - name: Security issue
-    url: https://github.com/JoDi-27/jodi-sdd/security/advisories/new
+    url: https://github.com/JoDi-SDD/JoDi-SDD/security/advisories/new
     about: Report it privately, not as an issue. See SECURITY.md.
