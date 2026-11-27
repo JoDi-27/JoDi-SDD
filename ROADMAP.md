@@ -119,27 +119,38 @@ A prototype with a bare repository and two clones gave exactly one winner in eac
 
 The skills don't change: they only call the `jsdd` CLI.
 
-### 10. GitHub Copilot support
+### 10. Codex and Copilot support
 
-*From Agent Plugins, the plugin format that Copilot CLI and VS Code share, which also accepts Claude-format plugins.*
+*From Agent Plugins (agent-plugins.org), the plugin format that Codex, Copilot CLI, and VS Code now share, and which all three accept Claude-format plugins into.*
 
-**Gap:** the kit runs only in Claude Code. Copilot can now install plugins, and the same `skills/<name>/SKILL.md` layout loads in both, but a few parts still depend on Claude Code:
+**Gap:** the kit runs only in Claude Code. Codex and Copilot can now install plugins, and the same `skills/<name>/SKILL.md` layout loads in all three. Codex is the closer fit: its hooks use Claude Code's `hooks.json` nesting and event names (`SessionStart`, `PreToolUse`, `PostToolUse`, `Stop` with `decision: block` and `stop_hook_active`), it sets `CLAUDE_PLUGIN_ROOT` as an alias in plugin hooks, and it reads `.claude-plugin/marketplace.json`. So `bin/jsdd`, the templates, the starters, the skill bodies, the session-start board, the commit-message hook, and the autopilot Stop hook should carry over unchanged. What still depends on Claude Code, worst first:
 
-- the hooks, whose event names, stdin JSON, and way of blocking a command differ in Copilot (VS Code also ignores matchers)
-- `${CLAUDE_PLUGIN_ROOT}` in the plan, init, and verify skills
-- `bin/jsdd` being on the PATH
-- the agents, which Copilot reads as `*.agent.md` with its own tool names
-- `$CLAUDE_CODE_SESSION_ID` as the owner of a claim
+- **Claim owners split.** Hooks pass the session ID from their input, but `jsdd` run from the model's own shell sees no `$CLAUDE_CODE_SESSION_ID` and falls back to `user@host`. A run started by the model is then not "this session's run" to the hooks: `protect-run-files` and `pre-ask-park` turn off without a word, and `stop-claims` misses held claims. Neither Codex nor Copilot documents a session-ID variable in the shell.
+- **Edit hooks see no file path.** Codex edits files with `apply_patch`, whose input is the patch in `tool_input.command`, not `tool_input.file_path`. `post-edit-status` stops regenerating `STATUS.md`, and `protect-run-files` lets a run edit the constitution and frozen checks.
+- **No question tool.** Codex has no `AskUserQuestion`, so `pre-ask-park` has nothing to block, and "a run never asks" rests on the skill's wording. Headless runs lose little, since the Stop hook continues the turn.
+- **Reviewers are read-only by instruction only.** Codex custom agents are TOML files in `.codex/agents/` (Copilot reads `*.agent.md` with its own tool names). Plugins aren't documented to ship them, and Codex has no per-agent tool list: its docs say instructions do not make a read-only sandbox. The fresh-context reviewer, the kit's main difference from Spec Kit, gets weaker.
+- `${CLAUDE_PLUGIN_ROOT}` in the text of the auto, init, plan, and verify skills: Codex sets it only in hook environments, and does not substitute it in skill text.
+- `bin/jsdd` being on the PATH: not documented for Codex plugins.
+- The headless runner and `jsdd auto doctor`: `claude -p`, `CLAUDE_CODE_OAUTH_TOKEN` or `ANTHROPIC_API_KEY`, and permission modes read from `.claude/settings*.json`.
+- Smaller: skills are invoked as `$plan` (Codex) rather than `/jsdd:plan`, and the bare names (`plan`, `status`, `init`) can collide with other skills; `$ARGUMENTS` and `argument-hint` aren't supported; Codex asks the user to review and trust hooks by hash, so every jsdd upgrade asks again; and hooks make a plugin ineligible for Codex's public plugin directory.
 
-**Shape:** one repository and one plugin for both agents:
+**Shape:** one repository and one plugin for all three agents, with an agent-neutral core first, since it helps Claude Code too:
 
-- A spike first: install the current plugin in Copilot CLI and record what loads, which manifest location it reads, and what the skills' slash names are.
-- `jsdd template <name>` prints a template's path, so skills no longer need `${CLAUDE_PLUGIN_ROOT}`.
-- Copilot hooks under `com.github.copilot/hooks/`, with `hooks/_lib.sh` converting Copilot's input so the hook scripts stay the same.
-- `jsdd init` installs a git `commit-msg` hook, so the commit-message check works with any agent, or none.
-- Copilot agents in `com.github.copilot/agents/`, generated from `agents/*.md` at release so the two copies can't drift.
-- `JSDD_SESSION_ID` as the claim owner, set by whichever agent starts the session.
-- If Copilot can't show the board at session start, `jsdd init` adds a line to `.github/copilot-instructions.md` telling the agent to run `jsdd status` first.
+- **A spike first, per agent.** Install the current plugin in Codex CLI (then Copilot CLI) and record what loads, which manifest it reads, the skills' invocation names, whether an `Edit|Write` matcher catches `apply_patch`, and whether any session ID reaches the shell.
+- **Agent-neutral core:**
+  - `jsdd template <name>` prints a template's path, so skills no longer need `${CLAUDE_PLUGIN_ROOT}`.
+  - `jsdd init` installs a git `commit-msg` hook, so the commit-message check works with any agent, or none.
+  - A single claim owner per session. `$JSDD_SESSION_ID` already takes precedence; what's missing is a way to get it into the model's shell where the agent sets no variable (the session-start hook writing the ID where `jsdd` can find it, keyed by checkout, is one option the spike should test).
+  - `hooks/_lib.sh` turns each agent's hook input into one shape, including the file paths from an `apply_patch` patch's `*** Add File:` / `*** Update File:` / `*** Delete File:` lines, so the hook scripts stay the same.
+  - The session-start hook prints the absolute path of `jsdd` when it isn't on the PATH.
+- **Codex adapter:**
+  - `apply_patch` added to the edit matchers.
+  - Codex agents (`.codex/agents/*.toml`) generated from `agents/*.md` at release so the copies can't drift, and installed by `jsdd init`.
+  - Reviews that need a real read-only sandbox (`sdd-reviewer`, `sdd-product`) can run through `codex exec --sandbox read-only` started by `jsdd` itself: a fresh context and a sandbox, not just an instruction.
+  - `jsdd auto run --agent codex` runs `codex exec --sandbox workspace-write --json` with `CODEX_API_KEY`, and `jsdd auto doctor` checks Codex's credentials, sandbox, and hook trust (`--dangerously-bypass-hook-trust` only in a container) instead of Claude's.
+  - `jsdd init` adds a line to `AGENTS.md` telling the agent to run `jsdd status` first, as a fallback if hooks aren't trusted yet.
+- **Copilot adapter:** Copilot hooks under `com.github.copilot/hooks/` (event names, stdin JSON, and blocking differ, and VS Code ignores matchers), Copilot agents in `com.github.copilot/agents/` generated the same way, and a line in `.github/copilot-instructions.md` if Copilot can't show the board at session start.
+- **Tests and docs:** a scenario that feeds the hooks Codex-shaped input (an `apply_patch` edit, a `Stop` with `stop_hook_active`). The README and `docs/comparison.md` go from "only works in Claude Code" to "best in Claude Code", listing what each other agent enforces less: no question-blocking hook, reviewers read-only by instruction unless run through `codex exec`, and hook trust prompts after upgrades.
 
 ### 11. A dependency graph of specs and tasks
 
@@ -485,7 +496,7 @@ These are on in autopilot and autonomous mode wherever the run happens, not only
 
 - **AskUserQuestion is blocked during a run.** A new PreToolUse hook, `hooks/pre-ask-park.sh`, denies AskUserQuestion while this session has an open run (`jsdd run active`). Its reason says: park instead, `jsdd park <ID> <gate> "<reason>"`. Outside a run nothing changes, so `/jsdd:auto setup`, which asks on purpose, still works.
 - **`claims: remote` in `specs/jsdd.yml`.** It is committed, so every clone agrees (sdd-runtime spike 002). The order is `SDD_CLAIMS`, then `git config jsdd.claims`, then `specs/jsdd.yml`, then local. `cloud` sets `SDD_CLAIMS=remote`.
-- **`$JSDD_SESSION_ID` is the claim owner** when set, ahead of `$CLAUDE_CODE_SESSION_ID`. It is the same variable idea 10 proposes for agents other than Claude Code. The Stop hook already passes the session's ID, and with the runner both are the same UUID.
+- **`$JSDD_SESSION_ID` is the claim owner** when set, ahead of `$CLAUDE_CODE_SESSION_ID`. Idea 10 builds on the same variable for Codex and Copilot. The Stop hook already passes the session's ID, and with the runner both are the same UUID.
 - **`auto doctor` gains unattended checks.** They run with `--unattended` or under `cloud`, as FIX:
   - Claude auth is present (`CLAUDE_CODE_OAUTH_TOKEN` or `ANTHROPIC_API_KEY`)
   - a git identity is set
@@ -563,7 +574,7 @@ What it costs:
 
 ## Considered and set aside
 
-- **Support for other coding agents beyond Copilot, and an extension or preset catalog.** The hook-based enforcement depends on each agent's hooks, so each one costs real work to support. Copilot (idea 10) is the exception because it reads the same plugin format. A cheaper middle ground is letting a project override files in `templates/`, for example with `specs/.templates/`.
+- **Support for other coding agents beyond Codex and Copilot, and an extension or preset catalog.** The hook-based enforcement depends on each agent's hooks, so each one costs real work to support. Codex and Copilot (idea 10) are the exceptions because they read the same plugin format. A cheaper middle ground is letting a project override files in `templates/`, for example with `specs/.templates/`.
 - **Task complexity scoring** (Taskmaster). The plan reviewer can flag tasks that are too big without a separate feature.
 - **Persona agents** (BMAD). They add ceremony without the guarantees the hooks and checks give.
 
