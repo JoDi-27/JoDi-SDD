@@ -41,6 +41,7 @@ jobs:
           bump=$(jq -r 'if index("release:major") then "major" elif index("release:minor") then "minor" else "patch" end' <<<"$LABELS")
           version=$(.github/scripts/release.sh "$bump" "$TITLE" "$NUMBER" "$URL" "$RUNNER_TEMP/notes.md")
           echo "version=$version" >>"$GITHUB_OUTPUT"
+          echo "bump=$bump" >>"$GITHUB_OUTPUT"
 
       - name: Commit, tag, and publish
         env:
@@ -53,3 +54,21 @@ jobs:
           git tag "v$VERSION"
           git push origin HEAD:main "v$VERSION"
           gh release create "v$VERSION" --title "v$VERSION" --notes-file "$RUNNER_TEMP/notes.md"
+
+      # Minor and major releases are also posted to the organization's Announcements
+      # (discussions in JoDi-SDD/.github). ANNOUNCE_TOKEN is a fine-grained token with
+      # Discussions read and write on that repository; without it the step is skipped.
+      # A failed post never fails the release, which is already published.
+      - name: Announce
+        if: steps.bump.outputs.bump != 'patch'
+        continue-on-error: true
+        env:
+          VERSION: ${{ steps.bump.outputs.version }}
+          GH_TOKEN: ${{ secrets.ANNOUNCE_TOKEN }}
+          URL: ${{ github.server_url }}/${{ github.repository }}/releases/tag/v${{ steps.bump.outputs.version }}
+        run: |
+          if [ -z "$GH_TOKEN" ]; then
+            echo "::notice::ANNOUNCE_TOKEN is not set; skipping the announcement"
+            exit 0
+          fi
+          .github/scripts/announce.sh "$VERSION" "$RUNNER_TEMP/notes.md" "$URL"

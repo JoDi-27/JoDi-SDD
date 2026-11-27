@@ -17,6 +17,7 @@ Check the manifests with `claude plugin validate .`, and run `/bin/bash .github/
 Every PR merged into `main` is released by [the Release workflow](.github/workflows/release.yml): it bumps `version` in `.claude-plugin/plugin.json`, moves the notes under `## Unreleased` in [CHANGELOG.md](CHANGELOG.md) into a section for the new version, tags it `vX.Y.Z`, and publishes a GitHub release. Projects pick up the new version with `claude plugin update jsdd@jodi-sdd`.
 
 - The bump is a patch unless the PR has the `release:minor` or `release:major` label. While the version is 0.x, use `release:minor` for breaking changes. `release:skip` merges without a release.
+- Minor and major releases are also posted to the organization's [Announcements](https://github.com/orgs/JoDi-SDD/discussions/categories/announcements) by [announce.sh](.github/scripts/announce.sh). It uses the `ANNOUNCE_TOKEN` secret, a fine-grained token with Discussions read and write on `JoDi-SDD/.github`. Without the secret the step is skipped, and a failed post never fails the release.
 - Write user-facing notes under `## Unreleased` in your PR. With none, the PR title becomes the entry.
 - `main` is protected: changes land through a PR whose `lint` and `smoke` checks pass, and nobody force-pushes or deletes it. The release commit and tag are pushed with the `RELEASE_TOKEN` secret, a fine-grained token of a repository admin with Contents read and write on this repository, because the workflow's own token cannot bypass the protection.
 - Don't edit `version` by hand.
