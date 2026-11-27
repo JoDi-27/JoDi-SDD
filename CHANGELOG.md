@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+## 0.8.3 (2026-11-27)
+
+- [meta] Post minor and major releases to the org's Announcements ([#39](https://github.com/JoDi-SDD/JoDi-SDD/pull/39))
+
 ## 0.8.2 (2026-11-27)
 
 - [meta] Point GitHub links at the JoDi-SDD organization ([#38](https://github.com/JoDi-SDD/JoDi-SDD/pull/38))
